@@ -57,11 +57,31 @@ function sair() {
 // ============================================================
 // APP PRINCIPAL
 // ============================================================
+let LOJA_COORDS = null;
+
+// Fórmula de haversine — mesma usada no cardápio do cliente pra calcular
+// a distância entre a loja e o endereço de entrega.
+function distanciaKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function entrarNoApp() {
   document.getElementById('telaLogin').classList.add('hide');
   document.getElementById('app').classList.remove('hide');
   document.getElementById('nomeEntregador').textContent = `Olá, ${SESSAO.nome}!`;
   document.getElementById('nomeLoja').textContent = SESSAO.estabelecimentoNome;
+
+  sb.from('estabelecimentos').select('latitude, longitude').eq('id', SESSAO.estabelecimentoId).single()
+    .then(({ data }) => {
+      if (data && data.latitude != null) {
+        LOJA_COORDS = { lat: data.latitude, lng: data.longitude };
+        renderPedidosEntregador();
+      }
+    });
 
   ativarRastreamento();
   carregarPedidosEntregador();
@@ -105,6 +125,9 @@ function pedidoEntregaCardHTML(p) {
   const botaoRota = temCoordenadas
     ? `<button class="btn-rota" onclick="abrirRota(${p.enderecos.latitude}, ${p.enderecos.longitude})">🗺️ Rota</button>`
     : '';
+  const distanciaTxt = (temCoordenadas && LOJA_COORDS)
+    ? ` <strong>(${distanciaKm(LOJA_COORDS.lat, LOJA_COORDS.lng, p.enderecos.latitude, p.enderecos.longitude).toFixed(1)} km da loja)</strong>`
+    : '';
 
   const STATUS_LABEL = {
     aceito: { texto: 'Aceito — aguardando preparo', classe: 'aguardando' },
@@ -119,7 +142,7 @@ function pedidoEntregaCardHTML(p) {
     <div class="pedido-entrega-card">
       <div class="linha1"><span>#${p.numero}</span><span>${fmt(p.total)}</span></div>
       <div class="linha2">${p.clientes?.nome || 'Cliente'}${p.clientes?.whatsapp ? ' · ' + p.clientes.whatsapp : ''}</div>
-      <div class="linha3">📍 ${enderecoTxt}</div>
+      <div class="linha3">📍 ${enderecoTxt}${distanciaTxt}</div>
       <div class="linha3">${itensTxt}</div>
       <div class="linha3">💳 ${pagamentoTxt}</div>
       <span class="tag-status ${statusInfo.classe}">${statusInfo.texto}</span>

@@ -942,8 +942,9 @@ function renderStatus(pedido, recemCriado) {
 // o veículo cadastrado.
 function iconeEntregador(veiculo) {
   const classeIcone = veiculo === 'bicicleta' ? 'fa-bicycle' : 'fa-motorcycle';
+  const cor = veiculo === 'bicicleta' ? '#2E8B57' : '#E23D3D';
   return L.divIcon({
-    html: `<div style="background:var(--accent);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff;"><i class="fa-solid ${classeIcone}" style="color:#fff;font-size:15px;"></i></div>`,
+    html: `<div style="background:${cor};width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.35);border:2px solid #fff;"><i class="fa-solid ${classeIcone}" style="color:#fff;font-size:15px;"></i></div>`,
     className: '',
     iconSize: [32, 32],
     iconAnchor: [16, 16]
