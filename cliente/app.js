@@ -233,9 +233,11 @@ function abrirProduto(id) {
       nome: g.nome, limite: g.limite_escolha,
       ingredientes: (g.ingredientes || []).filter(i => i.ativo).map(i => ({
         nome: i.nome, padrao: i.incluido_padrao,
-        // Categoria com limite de escolha sempre começa em branco — o
-        // cliente escolhe ativamente, igual iFood. Sem limite, mantém o
+        // Categoria com limite de escolha sempre começa zerada — o cliente
+        // escolhe ativamente quantas quiser de cada item, até o limite
+        // total da categoria (igual iFood). Sem limite, mantém o
         // comportamento de "vem incluso, tira se não quiser".
+        qtd: 0,
         incluido: g.limite_escolha ? false : i.incluido_padrao
       }))
     }))
@@ -244,12 +246,16 @@ function abrirProduto(id) {
   const gruposHTML = PRODUTO_ATUAL.grupos.map((g, gi) => `
     <div class="grupo-title" style="display:flex;justify-content:space-between;align-items:center;">
       <span>${g.nome}</span>
-      ${g.limite ? `<span class="grupo-limite-hint" id="limiteHint_${gi}">${g.ingredientes.filter(i => i.incluido).length}/${g.limite}</span>` : ''}
+      ${g.limite ? `<span class="grupo-limite-hint" id="limiteHint_${gi}">${g.ingredientes.reduce((s, i) => s + i.qtd, 0)}/${g.limite}</span>` : ''}
     </div>
     ${g.ingredientes.map((ing, ii) => g.limite ? `
       <div class="ingrediente-toggle-row">
         <span>${ing.nome}</span>
-        <button type="button" class="btn-toggle-sinal" id="toggleIng_${gi}_${ii}" onclick="toggleIngredienteGrupo(${gi}, ${ii})">+</button>
+        <div class="stepper-ingrediente">
+          <button type="button" onclick="alterarQtdIngrediente(${gi}, ${ii}, -1)">−</button>
+          <span id="qtdIng_${gi}_${ii}">${ing.qtd}</span>
+          <button type="button" onclick="alterarQtdIngrediente(${gi}, ${ii}, 1)">+</button>
+        </div>
       </div>` : `
       <div class="adicional-row">
         <label><input type="checkbox" ${ing.incluido ? 'checked' : ''} onchange="toggleIngredienteSemLimite(${gi}, ${ii}, this)"> ${ing.nome}</label>
@@ -292,27 +298,24 @@ function mudarQtd(delta) {
   atualizarValorBotaoAdd();
 }
 
-// Categorias COM limite — botão +/- (estilo iFood), nada vem marcado
-function toggleIngredienteGrupo(gi, ii) {
+// Categorias COM limite — contador de quantidade por item (estilo iFood):
+// o cliente pode escolher mais de 1 do mesmo item, contanto que a SOMA de
+// tudo na categoria não passe do limite. Nada vem marcado por padrão.
+function alterarQtdIngrediente(gi, ii, delta) {
   const grupo = PRODUTO_ATUAL.grupos[gi];
   const ing = grupo.ingredientes[ii];
-  const querMarcar = !ing.incluido;
+  const totalAtual = grupo.ingredientes.reduce((s, i) => s + i.qtd, 0);
 
-  if (querMarcar) {
-    const totalMarcados = grupo.ingredientes.filter(i => i.incluido).length;
-    if (totalMarcados >= grupo.limite) {
-      alert(`Você já escolheu o máximo de ${grupo.limite} em "${grupo.nome}".`);
-      return;
-    }
+  if (delta > 0 && totalAtual >= grupo.limite) {
+    alert(`Você já escolheu o máximo de ${grupo.limite} em "${grupo.nome}".`);
+    return;
   }
 
-  ing.incluido = querMarcar;
-  const btn = document.getElementById(`toggleIng_${gi}_${ii}`);
-  btn.textContent = querMarcar ? '−' : '+';
-  btn.classList.toggle('selecionado', querMarcar);
+  ing.qtd = Math.max(0, ing.qtd + delta);
+  document.getElementById(`qtdIng_${gi}_${ii}`).textContent = ing.qtd;
 
   const hint = document.getElementById(`limiteHint_${gi}`);
-  if (hint) hint.textContent = `${grupo.ingredientes.filter(i => i.incluido).length}/${grupo.limite}`;
+  if (hint) hint.textContent = `${grupo.ingredientes.reduce((s, i) => s + i.qtd, 0)}/${grupo.limite}`;
 }
 
 // Categorias SEM limite — checkbox tradicional, vem incluso por padrão
@@ -345,7 +348,7 @@ function adicionarAoCarrinho() {
   PRODUTO_ATUAL.grupos.forEach(g => {
     g.ingredientes.forEach(i => {
       if (g.limite) {
-        if (i.incluido) ingredientesAdicionados.push(i.nome);
+        if (i.qtd > 0) ingredientesAdicionados.push(i.qtd > 1 ? `${i.qtd}x ${i.nome}` : i.nome);
       } else {
         if (i.padrao && !i.incluido) ingredientesRemovidos.push(i.nome);
         if (!i.padrao && i.incluido) ingredientesAdicionados.push(i.nome);
