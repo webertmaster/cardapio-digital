@@ -212,6 +212,11 @@ function ativarRastreamento() {
       sb.rpc('entregador_atualizar_localizacao', {
         p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin,
         p_lat: pos.coords.latitude, p_lng: pos.coords.longitude
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Erro ao enviar localização:', error);
+          document.getElementById('textoRastreio').textContent = 'Erro ao enviar localização — veja o console (F12).';
+        }
       });
     },
     () => {

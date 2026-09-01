@@ -1163,6 +1163,12 @@ function gerarPinEntregador() {
   return String(Math.floor(1000 + Math.random() * 9000));
 }
 
+function toggleFormEntregador() {
+  const form = document.getElementById('formNovoEntregador');
+  const aberto = form.classList.toggle('hide') === false;
+  document.getElementById('btnAbrirFormEntregador').textContent = aberto ? 'Cancelar' : '+ Adicionar entregador';
+}
+
 async function adicionarEntregador() {
   const nome = document.getElementById('novoEntregadorNome').value.trim();
   const telefone = document.getElementById('novoEntregadorTelefone').value.trim();
@@ -1176,6 +1182,8 @@ async function adicionarEntregador() {
   document.getElementById('novoEntregadorNome').value = '';
   document.getElementById('novoEntregadorTelefone').value = '';
   document.getElementById('novoEntregadorVeiculo').value = 'moto';
+  document.getElementById('formNovoEntregador').classList.add('hide');
+  document.getElementById('btnAbrirFormEntregador').textContent = '+ Adicionar entregador';
   await carregarEntregadores();
   renderEntregadores();
   atualizarSeletorEntregadorPedido();
@@ -1212,6 +1220,9 @@ function inicializarMapaEntregadores() {
   }
 
   carregarLocalizacoesEntregadores();
+  // Reforço além do realtime: se por algum motivo o evento não chegar
+  // (rede instável, canal caiu), o mapa se corrige sozinho a cada 8s.
+  setInterval(carregarLocalizacoesEntregadores, 8000);
 
   ENTREGADORES_LOC_CHANNEL = sb.channel('loc-entregadores-' + LOJA.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'entregador_localizacao' },
@@ -1240,8 +1251,13 @@ function removerMarcadorEntregador(entregadorId) {
 async function carregarLocalizacoesEntregadores() {
   const ids = ENTREGADORES.map(e => e.id);
   if (!ids.length) return;
-  const { data } = await sb.from('entregador_localizacao').select('*').in('entregador_id', ids);
+  const { data, error } = await sb.from('entregador_localizacao').select('*').in('entregador_id', ids);
+  if (error) { console.error('Erro ao carregar localização dos entregadores:', error); return; }
+  const presentes = new Set((data || []).map(l => l.entregador_id));
   (data || []).forEach(atualizarMarcadorEntregador);
+  Object.keys(MARCADORES_ENTREGADORES).forEach((id) => {
+    if (!presentes.has(id)) removerMarcadorEntregador(id);
+  });
 }
 
 function atualizarMarcadorEntregador(loc) {

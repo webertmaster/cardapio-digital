@@ -330,18 +330,21 @@
       <h3 style="font-size:14px;margin-bottom:4px;">Entregadores</h3>
       <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Cadastre os motoboys da loja. O PIN gerado é o login deles no app do entregador.</p>
       <div id="listaEntregadores"></div>
-      <div class="campo-linha" style="margin-top:12px;">
-        <div class="campo"><label>Nome</label><input id="novoEntregadorNome"></div>
-        <div class="campo"><label>Telefone (opcional)</label><input id="novoEntregadorTelefone"></div>
+      <button class="btn-secundario" id="btnAbrirFormEntregador" style="margin-top:12px;" onclick="toggleFormEntregador()">+ Adicionar entregador</button>
+      <div id="formNovoEntregador" class="hide" style="margin-top:12px;">
+        <div class="campo-linha">
+          <div class="campo"><label>Nome</label><input id="novoEntregadorNome"></div>
+          <div class="campo"><label>Telefone (opcional)</label><input id="novoEntregadorTelefone"></div>
+        </div>
+        <div class="campo">
+          <label>Veículo</label>
+          <select id="novoEntregadorVeiculo">
+            <option value="moto">🏍️ Moto</option>
+            <option value="bicicleta">🚲 Bicicleta</option>
+          </select>
+        </div>
+        <button class="btn-secundario" onclick="adicionarEntregador()">Salvar entregador</button>
       </div>
-      <div class="campo">
-        <label>Veículo</label>
-        <select id="novoEntregadorVeiculo">
-          <option value="moto">🏍️ Moto</option>
-          <option value="bicicleta">🚲 Bicicleta</option>
-        </select>
-      </div>
-      <button class="btn-secundario" onclick="adicionarEntregador()">+ Adicionar entregador</button>
 
       <hr style="border:none;border-top:1px solid var(--line);margin:22px 0;">
 
