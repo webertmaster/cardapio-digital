@@ -779,7 +779,7 @@ async function enviarPedido() {
 
   } catch (err) {
     console.error(err);
-    alert('Não foi possível enviar o pedido. Tente novamente.');
+    alert('Não foi possível enviar o pedido.\n\nDetalhe técnico: ' + (err?.message || err?.error_description || JSON.stringify(err)));
     btn.disabled = false; btn.querySelector('span').textContent = 'Fazer pedido';
   }
 }

@@ -1,4 +1,4 @@
-const CACHE = 'cardapio-v2';
+const CACHE = 'cardapio-v3';
 const ARQUIVOS = ['./index.html', './app.js', './manifest.json'];
 
 self.addEventListener('install', (e) => {
@@ -25,7 +25,9 @@ self.addEventListener('fetch', (e) => {
         caches.open(CACHE).then((cache) => cache.put(e.request, copia));
         return resposta;
       })
-      .catch(() => caches.match(e.request))
+      .catch(() =>
+        caches.match(e.request).then((resp) => resp || Response.error())
+      )
   );
 });
 
