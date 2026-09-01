@@ -42,6 +42,12 @@
   .status-rastreio .dot{width:7px;height:7px;border-radius:50%;background:var(--success);}
   .status-rastreio .dot.off{background:var(--danger);}
 
+  .btn-disponibilidade{width:100%;margin-top:12px;padding:12px;border-radius:12px;font-size:13.5px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s;}
+  .btn-disponibilidade .dot{width:8px;height:8px;border-radius:50%;background:#fff;}
+  .btn-disponibilidade.online{background:var(--success);color:#fff;}
+  .btn-disponibilidade.offline{background:rgba(255,255,255,0.14);color:#fff;}
+
   main{padding:16px;}
   .empty-state{text-align:center;padding:50px 20px;color:var(--muted);font-size:13px;}
 
@@ -81,6 +87,9 @@
     <h1 id="nomeEntregador">Olá!</h1>
     <p id="nomeLoja">—</p>
     <div class="status-rastreio"><span class="dot off" id="dotRastreio"></span><span id="textoRastreio">Ativando localização…</span></div>
+    <button class="btn-disponibilidade" id="btnDisponibilidade" onclick="alternarDisponibilidade()">
+      <span class="dot"></span><span id="textoDisponibilidade">Carregando…</span>
+    </button>
   </header>
   <main>
     <div id="listaPedidosEntregador"></div>

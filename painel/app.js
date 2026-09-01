@@ -383,7 +383,9 @@ function renderPedidoDetalhe(p) {
     ? `${p.enderecos.rua}, ${p.enderecos.numero} — ${p.enderecos.bairro}${p.enderecos.complemento ? ' (' + p.enderecos.complemento + ')' : ''}`
     : 'Retirada no local';
 
-  const opcoesEntregador = ENTREGADORES.map(e => `<option value="${e.id}" ${p.entregador_id === e.id ? 'selected' : ''}>${e.nome}</option>`).join('');
+  const opcoesEntregador = ENTREGADORES
+    .filter(e => e.disponivel || e.id === p.entregador_id)
+    .map(e => `<option value="${e.id}" ${p.entregador_id === e.id ? 'selected' : ''}>${e.nome}${!e.disponivel ? ' (indisponível)' : ''}</option>`).join('');
   const seletorEntregadorHTML = p.tipo_entrega === 'entrega' ? `
     <div class="campo" style="margin-top:10px;">
       <label>Entregador</label>
@@ -1147,7 +1149,9 @@ function renderEntregadores() {
   const cont = document.getElementById('listaEntregadores');
   cont.innerHTML = ENTREGADORES.length ? ENTREGADORES.map(e => `
     <div class="linha-detalhe">
-      <span>${e.nome}${e.telefone ? ' · ' + e.telefone : ''} · ${e.veiculo === 'bicicleta' ? '🚲 Bicicleta' : '🏍️ Moto'}</span>
+      <span>${e.nome}${e.telefone ? ' · ' + e.telefone : ''} · ${e.veiculo === 'bicicleta' ? '🚲 Bicicleta' : '🏍️ Moto'}
+        <span style="color:${e.disponivel ? 'var(--success)' : '#999'};font-size:11px;font-weight:600;margin-left:6px;">● ${e.disponivel ? 'Disponível' : 'Indisponível'}</span>
+      </span>
       <span>PIN: <strong>${e.pin}</strong>
         <button class="link-remover" style="color:var(--danger);background:none;font-size:11px;margin-left:8px;" onclick="removerEntregador('${e.id}')">desativar</button>
       </span>
@@ -1211,8 +1215,26 @@ function inicializarMapaEntregadores() {
 
   ENTREGADORES_LOC_CHANNEL = sb.channel('loc-entregadores-' + LOJA.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'entregador_localizacao' },
-      (payload) => atualizarMarcadorEntregador(payload.new))
+      (payload) => {
+        if (payload.eventType === 'DELETE') removerMarcadorEntregador(payload.old.entregador_id);
+        else atualizarMarcadorEntregador(payload.new);
+      })
     .subscribe();
+}
+
+// Some do mapa assim que o entregador desliga a disponibilidade (a
+// localização é apagada na hora, veja entregador_definir_disponibilidade).
+function removerMarcadorEntregador(entregadorId) {
+  if (MARCADORES_ENTREGADORES[entregadorId]) {
+    MAPA_ENTREGADORES.removeLayer(MARCADORES_ENTREGADORES[entregadorId]);
+    delete MARCADORES_ENTREGADORES[entregadorId];
+  }
+  const entregador = ENTREGADORES.find(e => e.id === entregadorId);
+  if (entregador && entregador.disponivel) {
+    entregador.disponivel = false;
+    renderEntregadores();
+    atualizarSeletorEntregadorPedido();
+  }
 }
 
 async function carregarLocalizacoesEntregadores() {
@@ -1226,6 +1248,12 @@ function atualizarMarcadorEntregador(loc) {
   if (!MAPA_ENTREGADORES || loc.latitude == null || loc.longitude == null) return;
   const entregador = ENTREGADORES.find(e => e.id === loc.entregador_id);
   if (!entregador) return; // não é entregador desta loja
+
+  if (!entregador.disponivel) {
+    entregador.disponivel = true;
+    renderEntregadores();
+    atualizarSeletorEntregadorPedido();
+  }
 
   if (MARCADORES_ENTREGADORES[loc.entregador_id]) {
     MARCADORES_ENTREGADORES[loc.entregador_id].setLatLng([loc.latitude, loc.longitude]);

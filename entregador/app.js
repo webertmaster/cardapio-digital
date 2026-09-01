@@ -43,6 +43,7 @@ async function fazerLogin() {
     nome: data[0].nome,
     estabelecimentoId: data[0].estabelecimento_id,
     estabelecimentoNome: data[0].estabelecimento_nome,
+    disponivel: data[0].disponivel,
     pin
   };
   localStorage.setItem(LS_ENTREGADOR, JSON.stringify(SESSAO));
@@ -83,6 +84,7 @@ function entrarNoApp() {
       }
     });
 
+  renderDisponibilidade();
   ativarRastreamento();
   carregarPedidosEntregador();
 
@@ -167,6 +169,28 @@ async function marcarEntregue(pedidoId) {
 }
 
 // ============================================================
+// DISPONIBILIDADE — o entregador liga/desliga se está de plantão
+// ============================================================
+function renderDisponibilidade() {
+  const btn = document.getElementById('btnDisponibilidade');
+  const texto = document.getElementById('textoDisponibilidade');
+  btn.classList.toggle('online', SESSAO.disponivel);
+  btn.classList.toggle('offline', !SESSAO.disponivel);
+  texto.textContent = SESSAO.disponivel ? 'Disponível — toque pra pausar' : 'Indisponível — toque pra ativar';
+}
+
+async function alternarDisponibilidade() {
+  const novoValor = !SESSAO.disponivel;
+  const { error } = await sb.rpc('entregador_definir_disponibilidade', {
+    p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin, p_disponivel: novoValor
+  });
+  if (error) { alert('Não foi possível atualizar. Tente novamente.'); return; }
+  SESSAO.disponivel = novoValor;
+  localStorage.setItem(LS_ENTREGADOR, JSON.stringify(SESSAO));
+  renderDisponibilidade();
+}
+
+// ============================================================
 // RASTREAMENTO DE LOCALIZAÇÃO (enquanto o app fica aberto)
 // ============================================================
 let ULTIMO_ENVIO = 0;
@@ -181,6 +205,7 @@ function ativarRastreamento() {
     (pos) => {
       document.getElementById('dotRastreio').classList.remove('off');
       document.getElementById('textoRastreio').textContent = 'Localização ativa';
+      if (!SESSAO.disponivel) return;
       const agora = Date.now();
       if (agora - ULTIMO_ENVIO < INTERVALO_ENVIO_MS) return;
       ULTIMO_ENVIO = agora;
