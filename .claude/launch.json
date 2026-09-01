@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cliente",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8000", "--directory", "cliente"],
+      "port": 8000
+    },
+    {
+      "name": "painel",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8001", "--directory", "painel"],
+      "port": 8001
+    },
+    {
+      "name": "entregador",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8002", "--directory", "entregador"],
+      "port": 8002
+    }
+  ]
+}

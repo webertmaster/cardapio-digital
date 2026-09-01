@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel da Loja</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{
+    --ink:#14251C; --ink-soft:#2A3F32; --paper:#F5F4EF; --card:#FFFFFF;
+    --accent:#FF5A36; --line:#E7E3D8; --muted:#8B8B80; --success:#2E8B57; --danger:#C24D3A;
+    font-family:'Inter',-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--paper);color:var(--ink);padding-bottom:70px;}
+  h1,h2,h3{font-family:'Poppins',sans-serif;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .hide{display:none !important;}
+
+  /* LOGIN */
+  #telaLogin{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  .login-box{background:var(--card);padding:28px 24px;border-radius:20px;width:100%;max-width:360px;border:1px solid var(--line);}
+  .login-box h1{font-size:19px;margin-bottom:4px;}
+  .login-box p{font-size:12.5px;color:var(--muted);margin-bottom:20px;}
+
+  .campo{margin-bottom:12px;}
+  .campo-linha{display:flex;gap:10px;}
+  .campo-linha .campo{flex:1;}
+  .campo-checkbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);margin:4px 0 14px;}
+  .campo-checkbox input{width:18px;height:18px;accent-color:var(--accent);}
+  .grupo-ingrediente-card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;}
+  .grupo-ingrediente-header{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;flex-wrap:wrap;}
+  .grupo-nome-input{font-weight:700;border:1px solid transparent;background:none;font-size:13.5px;font-family:inherit;
+    color:var(--ink);padding:4px 6px;border-radius:8px;min-width:0;flex:1;}
+  .grupo-nome-input:hover, .grupo-nome-input:focus{border-color:var(--line);background:var(--card);outline:none;}
+  .grupo-limite-label{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .grupo-limite-input{width:56px;padding:4px 6px;border-radius:8px;border:1px solid var(--line);background:var(--card);
+    font-size:12px;font-family:inherit;}
+  .seletor-cores{display:flex;gap:10px;}
+  .cor-swatch{width:34px;height:34px;border-radius:50%;border:3px solid transparent;cursor:pointer;position:relative;}
+  .cor-swatch.ativa{border-color:var(--ink);}
+  .cor-swatch.ativa::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:700;}
+  .campo label{font-size:12px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:5px;}
+  .campo input, .campo select, .campo textarea{
+    width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);font-size:13.5px;background:var(--paper);font-family:inherit;
+  }
+  .btn-primario{width:100%;background:var(--ink);color:#fff;padding:13px;border-radius:12px;font-size:14px;font-weight:700;margin-top:6px;}
+  .btn-secundario{width:100%;background:var(--paper);border:1px solid var(--line);color:var(--ink);padding:12px;border-radius:12px;font-size:13.5px;font-weight:600;margin-top:8px;display:inline-flex;align-items:center;justify-content:center;gap:7px;}
+  .erro{color:var(--danger);font-size:12.5px;margin-top:8px;}
+
+  /* HEADER PAINEL */
+  header.painel{background:var(--ink);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;}
+  header.painel h1{font-size:16px;}
+  .toggle-loja{display:flex;align-items:center;gap:8px;font-size:12px;}
+  .switch{width:38px;height:22px;background:#3A4A3E;border-radius:100px;position:relative;}
+  .switch.on{background:var(--success);}
+  .switch::after{content:'';width:16px;height:16px;background:#fff;border-radius:50%;position:absolute;top:3px;left:3px;transition:.2s;}
+  .switch.on::after{left:19px;}
+
+  /* NAV INFERIOR (mobile) */
+  nav.tabs{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);
+    display:flex;z-index:80;}
+  nav.tabs button{flex:1;padding:11px 4px;font-size:11px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;background:none;}
+  nav.tabs button.ativa{color:var(--accent);font-weight:700;}
+
+  /* SIDEBAR (desktop) — clara, só texto */
+  .sidebar{display:none;}
+  .sidebar-brand{display:flex;align-items:center;gap:10px;font-family:'Poppins',sans-serif;font-weight:700;
+    font-size:15px;margin-bottom:26px;padding:0 6px;color:var(--ink);}
+  .sidebar-brand-logo{width:34px;height:34px;background:var(--accent);border-radius:9px;display:flex;
+    align-items:center;justify-content:center;color:#fff;flex-shrink:0;}
+  .sidebar-nav{display:flex;flex-direction:column;gap:4px;}
+  .sidebar-item{padding:11px 14px;border-radius:10px;background:none;
+    color:var(--ink-soft);font-size:13.5px;font-weight:600;text-align:left;}
+  .sidebar-item.ativa{background:rgba(255,90,54,0.1);color:var(--accent);}
+
+  .view{display:none;padding:16px;}
+  .view.ativa{display:block;}
+
+  /* DASHBOARD */
+  .cards-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .stat-card{background:var(--card);border-radius:16px;padding:14px;border:1px solid var(--line);}
+  .stat-card .icone{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+    font-size:15px;margin-bottom:10px;}
+  .stat-card.azul .icone{background:#E4EDFB;color:#2563EB;}
+  .stat-card.verde .icone{background:#E3F5EA;color:var(--success);}
+  .stat-card.laranja .icone{background:#FFEDE7;color:var(--accent);}
+  .stat-card.vermelho .icone{background:#FBE7E4;color:var(--danger);}
+  .stat-card .valor{font-size:20px;font-weight:700;font-family:'Poppins',sans-serif;}
+  .stat-card .label{font-size:11.5px;color:var(--muted);margin-top:2px;}
+
+  .dashboard-charts{display:flex;flex-direction:column;gap:14px;margin-top:16px;}
+  .painel-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0;}
+  .painel-card h3{font-size:13.5px;margin-bottom:12px;color:var(--ink-soft);}
+  .grafico-wrap{position:relative;width:100%;height:210px;}
+  .grafico-wrap canvas{display:block;}
+  .legenda-donut{display:flex;flex-direction:column;gap:7px;margin-top:14px;font-size:12px;}
+  .legenda-item{display:flex;align-items:center;justify-content:space-between;font-weight:600;}
+  .legenda-item span:first-child{display:flex;align-items:center;font-weight:500;color:var(--ink-soft);}
+  .legenda-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px;flex-shrink:0;}
+
+  /* LAYOUT DESKTOP */
+  @media (min-width:900px){
+    body{padding-bottom:0;}
+    .app-shell{display:flex;min-height:100vh;align-items:stretch;}
+    .sidebar{display:flex;flex-direction:column;width:230px;flex-shrink:0;background:var(--card);
+      color:var(--ink);padding:22px 16px;border-right:1px solid var(--line);}
+    .main-content{flex:1;min-width:0;}
+    nav.tabs{display:none;}
+    .view{padding:26px 32px;max-width:1280px;}
+    .cards-grid{grid-template-columns:repeat(4,1fr);}
+    .dashboard-charts{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:16px;}
+  }
+
+  /* KANBAN */
+  .kanban-topbar{display:flex;gap:8px;margin-bottom:10px;}
+  .kanban-busca{flex:1;}
+  .kanban-busca input{width:100%;padding:11px 13px;border-radius:12px;border:1px solid var(--line);
+    font-size:13px;background:var(--card);font-family:inherit;}
+  .btn-pausar-loja{white-space:nowrap;padding:0 14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--card);font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .btn-pausar-loja.pausado{background:#FBE7E4;border-color:var(--danger);color:var(--danger);}
+
+  .kanban-colunas{display:flex;flex-direction:column;gap:4px;}
+  .kanban-coluna{margin-bottom:10px;}
+
+  .kanban-col-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;
+    border-radius:14px;margin-bottom:10px;font-weight:700;font-size:13px;}
+  .kanban-col-header .contagem{background:rgba(255,255,255,0.65);border-radius:100px;padding:1px 9px;
+    font-size:11px;margin-left:7px;}
+  .kanban-col-header .total{font-size:12px;font-weight:600;opacity:0.85;}
+  .kanban-col-header.cor-recebido{background:#FBE7E4;color:#B03A2E;}
+  .kanban-col-header.cor-preparando{background:#FFF1D9;color:#B4690E;}
+  .kanban-col-header.cor-pronto{background:#E4EDFB;color:#1D4ED8;}
+  .kanban-col-header.cor-entrega{background:#E3F5EA;color:#1F7A4D;}
+  .kanban-col-header.cor-finalizados{background:#EEEDE6;color:var(--muted);}
+
+  .pedido-card{background:var(--card);border-radius:14px;padding:12px;margin-bottom:8px;border:1px solid var(--line);border-left:4px solid var(--accent);}
+  .pedido-card.cor-recebido{border-left-color:#C24D3A;}
+  .pedido-card.cor-preparando{border-left-color:#D97706;}
+  .pedido-card.cor-pronto{border-left-color:#2563EB;}
+  .pedido-card.cor-entrega{border-left-color:#2E8B57;}
+  .pedido-card.cor-finalizados{border-left-color:#B9B4A6;}
+  .pedido-card .linha1{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;}
+  .pedido-card .linha2{font-size:12px;color:var(--muted);margin-top:3px;}
+  .pedido-card .linha3{font-size:12.5px;margin-top:6px;}
+  .pedido-card .valor{font-weight:700;color:var(--ink);margin-top:6px;font-size:13.5px;}
+  .pedido-card .linha-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+  .tag-cliente{font-size:10px;font-weight:700;background:#EFEDFB;color:#5B4FCF;padding:3px 7px;border-radius:6px;}
+  .tag-cobrar{font-size:10px;font-weight:700;background:#FFF1D9;color:#B4690E;padding:3px 7px;border-radius:6px;}
+  .pedido-card-acoes{display:flex;gap:6px;margin-top:10px;}
+  .pedido-card-acoes button{flex:1;padding:8px;border-radius:9px;font-size:11.5px;font-weight:700;
+    display:inline-flex;align-items:center;justify-content:center;gap:5px;}
+  .btn-card-recusar{background:var(--card);border:1px solid var(--danger);color:var(--danger);}
+  .btn-card-avancar{background:var(--ink);color:#fff;}
+  .btn-card-imprimir{background:var(--card);border:1px solid var(--line);color:var(--ink-soft);}
+  .btn-card-mapa{flex:0 0 44px !important;background:#E4EDFB;border:1px solid #C7D9F5;color:#1D4ED8;font-size:15px;}
+
+  @media (min-width:900px){
+    .kanban-colunas{flex-direction:row;align-items:flex-start;gap:14px;}
+    .kanban-coluna{flex:1;min-width:0;margin-bottom:0;}
+  }
+
+  /* SHEET (modal pedido / produto) */
+  .overlay{position:fixed;inset:0;background:rgba(20,37,28,0.5);z-index:100;display:flex;align-items:flex-end;}
+  .sheet{background:var(--paper);width:100%;max-height:92vh;overflow-y:auto;border-radius:22px 22px 0 0;padding:18px;position:relative;}
+  .sheet-close{position:absolute;top:14px;right:14px;background:var(--card);width:30px;height:30px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid var(--line);}
+
+  .linha-detalhe{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line);}
+  .item-detalhe{padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;}
+  .item-detalhe small{color:var(--muted);display:block;}
+  .btn-row{display:flex;gap:8px;margin-top:14px;}
+  .btn-row button{flex:1;}
+  .btn-aceitar{background:var(--success);color:#fff;padding:13px;border-radius:12px;font-weight:700;font-size:13.5px;}
+  .btn-recusar{background:var(--card);border:1px solid var(--danger);color:var(--danger);padding:13px;border-radius:12px;font-weight:700;font-size:13.5px;}
+  .btn-acao{width:100%;background:var(--ink);color:#fff;padding:14px;border-radius:12px;font-weight:700;font-size:13.5px;margin-top:14px;}
+
+  /* PRODUTOS */
+  .produto-linha{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:12px;margin-bottom:8px;}
+  .produto-linha h4{font-size:13.5px;}
+  .produto-linha small{color:var(--muted);font-size:11.5px;}
+  .chip{font-size:10.5px;padding:3px 8px;border-radius:6px;font-weight:600;}
+  .chip.on{background:#E3F0E7;color:var(--success);}
+  .chip.off{background:#F3E6E2;color:var(--danger);}
+  .fab{position:fixed;bottom:80px;right:18px;background:var(--accent);color:#fff;width:52px;height:52px;border-radius:50%;
+    font-size:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(255,90,54,.4);z-index:70;}
+
+  .empty-state{text-align:center;padding:40px 16px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="telaLogin">
+  <div class="login-box">
+    <h1>Painel da Loja</h1>
+    <p>Entre com sua conta de administrador.</p>
+    <div class="campo"><label>E-mail</label><input id="loginEmail" type="email"></div>
+    <div class="campo"><label>Senha</label><input id="loginSenha" type="password"></div>
+    <button class="btn-primario" onclick="fazerLogin()">Entrar</button>
+    <div class="erro hide" id="loginErro"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app" class="hide app-shell">
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <span class="sidebar-brand-logo" id="sidebarBrandLogo"></span>
+      <span id="sidebarLojaNome">Loja</span>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="sidebar-item ativa" data-view="viewDashboard" onclick="mudarView('viewDashboard')">Início</button>
+      <button class="sidebar-item" data-view="viewPedidos" onclick="mudarView('viewPedidos')">Pedidos</button>
+      <button class="sidebar-item" data-view="viewCardapio" onclick="mudarView('viewCardapio')">Cardápio</button>
+      <button class="sidebar-item" data-view="viewEntregas" onclick="mudarView('viewEntregas')">Entregas</button>
+      <button class="sidebar-item" data-view="viewEntregadores" onclick="mudarView('viewEntregadores')">Entregadores</button>
+      <button class="sidebar-item" data-view="viewConfig" onclick="mudarView('viewConfig')">Config</button>
+    </nav>
+  </aside>
+
+  <div class="main-content">
+    <header class="painel">
+      <h1 id="painelLojaNome" onclick="mostrarTrocarLoja()" style="cursor:pointer;">Loja ▾</h1>
+      <div class="toggle-loja" onclick="alternarAberto()">
+        <span id="statusLojaTexto">Aberto</span>
+        <div class="switch on" id="switchLoja"></div>
+      </div>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section class="view ativa" id="viewDashboard">
+      <div class="cards-grid">
+        <div class="stat-card azul"><div class="icone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v17l-3-2-3 2-3-2-3 2Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg></div><div class="valor" id="statPedidosHoje">0</div><div class="label">Pedidos hoje</div></div>
+        <div class="stat-card verde"><div class="icone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v9"/><path d="M15 9.8c0-1.3-1.4-1.8-3-1.8s-3 .6-3 1.8c0 2.6 6 1.2 6 3.9 0 1.3-1.4 1.8-3 1.8s-3-.5-3-1.8"/></svg></div><div class="valor" id="statVendasHoje">R$ 0</div><div class="label">Vendas hoje</div></div>
+        <div class="stat-card laranja"><div class="icone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/></svg></div><div class="valor" id="statTicketMedio">R$ 0</div><div class="label">Ticket médio</div></div>
+        <div class="stat-card vermelho"><div class="icone"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 21.5 20h-19Z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17" r="0.8" fill="currentColor" stroke="none"/></svg></div><div class="valor" id="statCancelados">0</div><div class="label">Cancelados</div></div>
+      </div>
+
+      <div class="dashboard-charts">
+        <div class="painel-card">
+          <h3>Vendas por dia</h3>
+          <div class="grafico-wrap"><canvas id="graficoVendasDia"></canvas></div>
+        </div>
+        <div class="painel-card">
+          <h3>Produtos mais vendidos</h3>
+          <div class="grafico-wrap" style="height:170px;"><canvas id="graficoMaisVendidos"></canvas></div>
+          <div class="legenda-donut" id="legendaMaisVendidos"></div>
+        </div>
+        <div class="painel-card">
+          <h3>Origem do faturamento</h3>
+          <div class="grafico-wrap" style="height:170px;"><canvas id="graficoOrigem"></canvas></div>
+          <div class="legenda-donut" id="legendaOrigem"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PEDIDOS (KANBAN) -->
+    <section class="view" id="viewPedidos">
+      <div class="kanban-topbar">
+        <div class="kanban-busca">
+          <input id="kanbanBusca" placeholder="Buscar por nome, telefone ou nº do pedido" oninput="renderKanban()">
+        </div>
+        <button class="btn-pausar-loja" id="btnPausarKanban" onclick="alternarAberto()">⏸ Pausar loja</button>
+      </div>
+      <div class="kanban-colunas" id="colunasKanban"></div>
+    </section>
+
+    <!-- CARDÁPIO -->
+    <section class="view" id="viewCardapio">
+      <div id="listaProdutosAdmin"></div>
+    </section>
+
+    <!-- CONFIGURAÇÕES -->
+    <section class="view" id="viewConfig">
+      <h3 style="font-size:14px;margin-bottom:10px;">Dados da loja</h3>
+      <div class="campo">
+        <label>Foto / logo da loja</label>
+        <div id="previewLogoLoja" style="width:96px;height:96px;border-radius:14px;background:var(--card);
+          border:1px solid var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;
+          margin-bottom:8px;color:var(--muted);font-size:11px;">Sem foto</div>
+        <input type="file" id="fLogoArquivo" accept="image/*" onchange="previsualizarLogoLoja(event)">
+      </div>
+      <div class="campo"><label>Nome da loja</label><input id="cfgNome"></div>
+      <div class="campo">
+        <label>WhatsApp de contato (aparece pro cliente durante o pedido)</label>
+        <input id="cfgWhatsapp" placeholder="Ex: 5511987654321 (com DDI+DDD, só números)">
+      </div>
+      <div class="campo-linha">
+        <div class="campo"><label>Tempo mínimo (min)</label><input id="cfgTempoMin" type="number" min="0"></div>
+        <div class="campo"><label>Tempo máximo (min)</label><input id="cfgTempoMax" type="number" min="0"></div>
+      </div>
+      <label class="campo-checkbox">
+        <input type="checkbox" id="cfgAceitaCartao"> Aceitar cartão na entrega (o entregador leva a maquininha)
+      </label>
+      <div class="campo">
+        <label>Cor de destaque do cardápio</label>
+        <div class="seletor-cores" id="seletorCores"></div>
+      </div>
+      <button class="btn-secundario" id="btnSalvarDadosLoja" onclick="salvarDadosLoja()">Salvar dados da loja</button>
+    </section>
+
+    <!-- ENTREGAS (raio de distância) -->
+    <section class="view" id="viewEntregas">
+      <h3 style="font-size:14px;margin-bottom:4px;">Localização da loja</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Arraste o pin pro endereço certo da loja — é o centro dos raios de entrega.</p>
+      <div id="mapaEntregas" style="height:280px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:10px;"></div>
+      <button class="btn-secundario" id="btnSalvarLocalLoja" onclick="salvarLocalizacaoLoja()">Salvar localização da loja</button>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:22px 0;">
+
+      <h3 style="font-size:14px;margin-bottom:4px;">Raios de entrega</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Defina o preço da entrega por faixa de distância, tipo iFood. Pedidos fora do maior raio não podem escolher entrega.</p>
+      <div id="listaRaios"></div>
+      <div class="campo-linha" style="margin-top:12px;">
+        <div class="campo"><label>Raio até (km)</label><input id="novoRaioKm" type="number" step="0.1" min="0.1" placeholder="Ex: 1.5"></div>
+        <div class="campo"><label>Valor (R$)</label><input id="novoRaioValor" type="number" step="0.01" min="0" placeholder="0 = grátis"></div>
+      </div>
+      <button class="btn-secundario" onclick="adicionarRaioEntrega()">+ Adicionar raio</button>
+    </section>
+
+    <!-- ENTREGADORES -->
+    <section class="view" id="viewEntregadores">
+      <h3 style="font-size:14px;margin-bottom:4px;">Entregadores</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">Cadastre os motoboys da loja. O PIN gerado é o login deles no app do entregador.</p>
+      <div id="listaEntregadores"></div>
+      <div class="campo-linha" style="margin-top:12px;">
+        <div class="campo"><label>Nome</label><input id="novoEntregadorNome"></div>
+        <div class="campo"><label>Telefone (opcional)</label><input id="novoEntregadorTelefone"></div>
+      </div>
+      <div class="campo">
+        <label>Veículo</label>
+        <select id="novoEntregadorVeiculo">
+          <option value="moto">🏍️ Moto</option>
+          <option value="bicicleta">🚲 Bicicleta</option>
+        </select>
+      </div>
+      <button class="btn-secundario" onclick="adicionarEntregador()">+ Adicionar entregador</button>
+
+      <hr style="border:none;border-top:1px solid var(--line);margin:22px 0;">
+
+      <h3 style="font-size:14px;margin-bottom:10px;">Localização ao vivo</h3>
+      <div id="mapaEntregadores" style="height:280px;border-radius:14px;overflow:hidden;border:1px solid var(--line);"></div>
+    </section>
+  </div>
+
+  <nav class="tabs">
+    <button class="ativa" data-view="viewDashboard" onclick="mudarView('viewDashboard')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="20" x2="5" y2="12"/><line x1="12" y1="20" x2="12" y2="6"/><line x1="19" y1="20" x2="19" y2="15"/></svg><span>Início</span></button>
+    <button data-view="viewPedidos" onclick="mudarView('viewPedidos')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v17l-3-2-3 2-3-2-3 2Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg><span>Pedidos</span></button>
+    <button data-view="viewCardapio" onclick="mudarView('viewCardapio')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg><span>Cardápio</span></button>
+    <button data-view="viewEntregas" onclick="mudarView('viewEntregas')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/></svg><span>Entregas</span></button>
+    <button data-view="viewEntregadores" onclick="mudarView('viewEntregadores')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="11" height="7" rx="1"/><path d="M13.5 12h3.6l3.4 3v1h-3"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg><span>Motoboys</span></button>
+    <button data-view="viewConfig" onclick="mudarView('viewConfig')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/></svg><span>Config</span></button>
+  </nav>
+
+  <button class="fab hide" id="fabProduto" onclick="abrirFormProduto()">+</button>
+</div>
+
+<!-- MODAL PEDIDO -->
+<div class="overlay hide" id="overlayPedido">
+  <div class="sheet">
+    <button class="sheet-close" onclick="fecharOverlay('overlayPedido')">✕</button>
+    <div id="pedidoDetalheConteudo"></div>
+  </div>
+</div>
+
+<!-- MODAL PRODUTO -->
+<div class="overlay hide" id="overlayProdutoForm">
+  <div class="sheet">
+    <button class="sheet-close" onclick="fecharOverlay('overlayProdutoForm')">✕</button>
+    <div id="produtoFormConteudo"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

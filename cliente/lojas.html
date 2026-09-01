@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escolha uma loja</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#14251C;--paper:#FAF9F4;--card:#FFFFFF;--accent:#FF5A36;--line:#E7E3D8;--muted:#8B8B80;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--paper);color:var(--ink);font-family:'Inter',-apple-system,sans-serif;padding:22px 18px;}
+  h1{font-family:'Poppins',sans-serif;font-size:19px;margin-bottom:4px;}
+  p.sub{font-size:13px;color:var(--muted);margin-bottom:18px;}
+  .loja-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:14px;margin-bottom:10px;text-decoration:none;color:var(--ink);}
+  .loja-icone{width:46px;height:46px;border-radius:12px;background:var(--accent);color:#fff;font-family:'Poppins',sans-serif;
+    font-weight:700;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;}
+  .loja-icone img{width:100%;height:100%;object-fit:cover;}
+  .loja-nome{font-weight:600;font-size:14.5px;}
+  .loja-status{font-size:12px;color:var(--muted);margin-top:2px;}
+  .empty{text-align:center;padding:50px 10px;color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+  <h1>Escolha uma loja</h1>
+  <p class="sub">Selecione onde você quer fazer seu pedido.</p>
+  <div id="lista">Carregando…</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = 'https://psgffdanlpaxgvenzqeh.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBzZ2ZmZGFubHBheGd2ZW56cWVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNDMxODAsImV4cCI6MjEwMzYxOTE4MH0.GYbEfYbRArCOsGoankz0_TNrwvd4YoURrPdnZeo9Ub4';
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function carregar() {
+      const { data: lojas } = await sb.from('estabelecimentos').select('*').order('nome');
+      const cont = document.getElementById('lista');
+      if (!lojas || !lojas.length) { cont.innerHTML = '<div class="empty">Nenhuma loja disponível.</div>'; return; }
+      cont.innerHTML = lojas.map(l => {
+        const aberta = l.aberto && !l.pausado_manualmente;
+        return `<a class="loja-item" href="index.html?loja=${l.slug}">
+          <div class="loja-icone">${l.logo_url ? `<img src="${l.logo_url}">` : l.nome[0]}</div>
+          <div>
+            <div class="loja-nome">${l.nome}</div>
+            <div class="loja-status">${aberta ? 'Aberto agora' : 'Fechado no momento'}</div>
+          </div>
+        </a>`;
+      }).join('');
+    }
+    carregar();
+  </script>
+</body>
+</html>

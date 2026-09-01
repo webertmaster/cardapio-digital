@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cardápio Digital</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14251C">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+  :root{
+    --ink:#14251C;
+    --header-bg:var(--ink);
+    --ink-soft:#2A3F32;
+    --paper:#FAF9F4;
+    --card:#FFFFFF;
+    --accent:#FF5A36;
+    --accent-dark:#E14A29;
+    --line:#E7E3D8;
+    --muted:#8B8B80;
+    --success:#2E8B57;
+    --radius:18px;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    padding-bottom:90px;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Poppins',sans-serif;}
+  img{display:block;max-width:100%;}
+  button{font-family:inherit;cursor:pointer;border:none;}
+  .hide{display:none !important;}
+
+  /* HEADER */
+  header.loja{
+    background:var(--header-bg);
+    color:#fff;
+    padding:20px 18px 16px;
+    border-radius:0 0 24px 24px;
+  }
+  .loja-top{display:flex;align-items:center;gap:12px;}
+  .loja-logo{width:52px;height:52px;border-radius:14px;background:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-family:'Poppins',sans-serif;
+    font-weight:700;font-size:20px;flex-shrink:0;overflow:hidden;}
+  .loja-info h1{font-size:19px;font-weight:600;}
+  .status-pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;margin-top:2px;color:#C9D6CC;}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--success);}
+  .dot.fechado{background:#C24D3A;}
+  .loja-meta{display:flex;gap:14px;margin-top:14px;font-size:12.5px;color:#C9D6CC;flex-wrap:wrap;}
+  .loja-meta span{display:flex;align-items:center;gap:5px;}
+
+  /* TOGGLE ENTREGA/RETIRADA (preview no header) */
+  .loja-toggle-row{display:flex;gap:8px;margin-top:14px;}
+  .loja-toggle-pill{flex:1;padding:9px 8px;border-radius:100px;background:rgba(255,255,255,0.12);
+    color:#fff;font-size:12.5px;font-weight:600;border:1px solid transparent;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+  .loja-toggle-pill.ativo{background:var(--accent);border-color:var(--accent);}
+
+  .busca{margin-top:16px;position:relative;}
+  .busca input{
+    width:100%;padding:12px 14px 12px 40px;border-radius:14px;border:none;
+    background:rgba(255,255,255,0.12);color:#fff;font-size:14.5px;
+  }
+  .busca input::placeholder{color:#B6C2B9;}
+  .busca svg{position:absolute;left:13px;top:50%;transform:translateY(-50%);opacity:0.7;}
+
+  /* DESTAQUES */
+  .destaques{padding:16px 16px 4px;}
+  .destaques h2{font-size:16px;margin-bottom:10px;color:var(--ink);}
+  .destaques-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .destaque-card{cursor:pointer;}
+  .destaque-foto{position:relative;height:90px;border-radius:12px;overflow:hidden;
+    background:linear-gradient(135deg,#E7E3D8,#F4F1E9);}
+  .destaque-foto img{width:100%;height:100%;object-fit:cover;}
+  .destaque-selo{position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;
+    background:var(--success);color:#fff;font-size:10px;font-weight:700;display:flex;
+    align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,0.2);}
+  .destaque-nome{font-size:11px;font-weight:500;margin-top:6px;color:var(--ink);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .destaque-preco{font-size:12.5px;font-weight:700;color:var(--accent);margin-top:2px;}
+
+  /* CATEGORIAS */
+  .categorias{display:flex;gap:8px;overflow-x:auto;padding:14px 16px;scrollbar-width:none;}
+  .categorias::-webkit-scrollbar{display:none;}
+  .cat-chip{
+    padding:8px 16px;border-radius:100px;background:var(--card);border:1px solid var(--line);
+    font-size:13.5px;font-weight:600;white-space:nowrap;color:var(--ink-soft);flex-shrink:0;
+  }
+  .cat-chip.ativa{background:var(--accent);color:#fff;border-color:var(--accent);}
+
+  /* PRODUTOS */
+  .secao-categoria{padding:6px 16px 10px;}
+  .secao-categoria h2{font-size:16px;margin-bottom:10px;color:var(--ink);}
+  .produto-card{
+    display:flex;gap:12px;background:var(--card);border-radius:var(--radius);
+    padding:12px;margin-bottom:10px;border:1px solid var(--line);align-items:center;
+  }
+  .produto-foto{width:76px;height:76px;border-radius:14px;background:linear-gradient(135deg,#E7E3D8,#F4F1E9);
+    flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;}
+  .produto-foto img{width:100%;height:100%;object-fit:cover;}
+  .produto-info{flex:1;min-width:0;}
+  .produto-info h3{font-size:14.5px;font-weight:600;margin-bottom:3px;}
+  .produto-info p{font-size:12.5px;color:var(--muted);line-height:1.4;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .produto-preco-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
+  .preco{font-size:14.5px;font-weight:700;color:var(--ink);}
+  .preco-antigo{font-size:11.5px;color:var(--muted);text-decoration:line-through;margin-right:5px;}
+  .btn-add{background:var(--ink);color:#fff;width:30px;height:30px;border-radius:9px;font-size:17px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;}
+  .badge-esgotado{font-size:10.5px;background:#F3E6E2;color:#C24D3A;padding:3px 8px;border-radius:6px;font-weight:600;}
+
+  /* NAVEGAÇÃO INFERIOR FIXA */
+  .bottom-nav{
+    position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);
+    display:flex;z-index:60;padding:8px 4px max(8px, env(safe-area-inset-bottom));
+    box-shadow:0 -4px 16px rgba(20,37,28,0.06);
+  }
+  .bottom-nav-item{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;
+    color:var(--muted);font-size:11px;font-weight:600;padding:4px 0;
+  }
+  .bottom-nav-item.ativo{color:var(--accent);}
+  .bottom-nav-icon{display:inline-flex;position:relative;}
+  .bottom-nav-badge{
+    position:absolute;top:-6px;right:-11px;background:var(--accent);color:#fff;font-size:9.5px;
+    font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;
+    justify-content:center;padding:0 4px;border:2px solid var(--card);
+  }
+  .bottom-nav-item.ativo .bottom-nav-badge{border-color:var(--card);}
+
+  /* OVERLAY / SHEETS */
+  .overlay{position:fixed;inset:0;background:rgba(20,37,28,0.5);z-index:100;display:flex;align-items:flex-end;}
+  .sheet{
+    background:var(--paper);width:100%;max-height:92vh;overflow-y:auto;border-radius:24px 24px 0 0;
+    padding:18px 18px 26px;animation:up .25s ease;
+  }
+  @keyframes up{from{transform:translateY(30px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  .sheet-handle{width:38px;height:4px;background:var(--line);border-radius:4px;margin:0 auto 14px;}
+  .sheet-close{position:absolute;top:16px;right:16px;background:var(--card);width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:16px;border:1px solid var(--line);}
+
+  /* PRODUTO DETALHE */
+  .produto-detalhe-foto{width:100%;height:180px;border-radius:16px;background:linear-gradient(135deg,#E7E3D8,#F4F1E9);
+    margin-bottom:14px;overflow:hidden;}
+  .produto-detalhe-foto img{width:100%;height:100%;object-fit:cover;}
+  .produto-detalhe h2{font-size:19px;margin-bottom:6px;}
+  .produto-detalhe p.desc{color:var(--muted);font-size:13.5px;line-height:1.5;margin-bottom:14px;}
+  .qtd-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
+  .qtd-control{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:6px 10px;}
+  .qtd-control button{width:26px;height:26px;border-radius:8px;background:var(--paper);font-size:16px;font-weight:700;}
+  .grupo-title{font-size:13.5px;font-weight:700;margin:16px 0 8px;color:var(--ink-soft);}
+  .grupo-limite-hint{font-size:11px;font-weight:600;color:var(--accent);}
+  .ingrediente-toggle-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .btn-toggle-sinal{width:30px;height:30px;border-radius:9px;background:var(--paper);border:1px solid var(--line);
+    font-size:18px;font-weight:700;color:var(--ink-soft);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .btn-toggle-sinal.selecionado{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .adicional-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);}
+  .adicional-row label{font-size:13.5px;}
+  .adicional-preco{font-size:12px;color:var(--muted);}
+  input[type=checkbox]{width:19px;height:19px;accent-color:var(--accent);}
+  textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px;
+    font-family:inherit;resize:none;background:var(--card);margin-top:6px;}
+  .btn-primario{
+    width:100%;background:var(--ink);color:#fff;padding:15px;border-radius:14px;font-size:14.5px;font-weight:700;
+    display:flex;justify-content:space-between;align-items:center;padding-left:20px;padding-right:20px;margin-top:18px;
+  }
+  .btn-primario:disabled{opacity:0.4;}
+  .btn-secundario{
+    width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink);padding:14px;border-radius:14px;
+    font-size:14px;font-weight:600;margin-top:10px;
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  }
+
+  /* CARRINHO / CHECKOUT */
+  .item-carrinho{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .item-carrinho-info{flex:1;}
+  .item-carrinho-info h4{font-size:13.5px;font-weight:600;}
+  .item-carrinho-info small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px;}
+  .item-carrinho-acoes{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+  .link-remover{color:var(--accent);font-size:11.5px;font-weight:600;background:none;}
+  .resumo-linha{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 0;color:var(--ink-soft);}
+  .resumo-linha.total{font-weight:700;font-size:15.5px;color:var(--ink);border-top:1px solid var(--line);
+    margin-top:6px;padding-top:12px;}
+
+  .campo{margin-bottom:12px;}
+  .campo label{font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:5px;}
+  .campo input, .campo select{
+    width:100%;padding:12px 13px;border-radius:12px;border:1px solid var(--line);font-size:13.5px;
+    background:var(--card);font-family:inherit;
+  }
+  .toggle-row{display:flex;gap:8px;margin-bottom:16px;}
+  .toggle-btn{flex:1;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);
+    font-size:13.5px;font-weight:600;color:var(--ink-soft);
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;}
+  .toggle-btn.ativo{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  /* STATUS PEDIDO */
+  .status-track{padding:10px 4px;}
+  .status-step{display:flex;gap:12px;padding-bottom:22px;position:relative;}
+  .status-step:not(:last-child)::before{content:'';position:absolute;left:11px;top:26px;bottom:0;width:2px;background:var(--line);}
+  .status-step.feito:not(:last-child)::before{background:var(--success);}
+  .status-dot{width:24px;height:24px;border-radius:50%;background:var(--line);flex-shrink:0;display:flex;
+    align-items:center;justify-content:center;color:#fff;font-size:12px;z-index:1;}
+  .status-step.feito .status-dot{background:var(--success);}
+  .status-step.atual .status-dot{background:var(--accent);}
+  .status-step h4{font-size:13.5px;font-weight:600;}
+  .status-step p{font-size:12px;color:var(--muted);margin-top:2px;}
+
+  .pedido-numero-box{text-align:center;padding:26px 10px;}
+  .pedido-numero-box .check{width:60px;height:60px;background:var(--success);border-radius:50%;color:#fff;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:28px;}
+  .pedido-numero-box h2{font-size:20px;}
+  .pedido-numero-box .num{font-size:15px;color:var(--muted);margin-top:4px;}
+
+  .empty-state{text-align:center;padding:50px 20px;color:var(--muted);}
+
+  /* CANCELAMENTO DE PEDIDO */
+  .motivo-btn{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);color:var(--ink);
+    padding:12px 14px;border-radius:12px;font-size:13.5px;font-weight:600;margin-bottom:8px;}
+  .motivo-btn.ativo{border-color:var(--accent);background:#FFF1EC;color:var(--accent-dark);}
+  .link-cancelar{background:none;border:none;color:var(--muted);font-size:12px;font-weight:600;
+    width:100%;text-align:center;padding:10px;margin-top:4px;text-decoration:underline;
+    display:inline-flex;align-items:center;justify-content:center;gap:5px;}
+
+  /* MAPA DE ENTREGA (checkout) */
+  .status-distancia{font-size:12.5px;color:var(--ink-soft);background:var(--paper);border-radius:10px;
+    padding:9px 12px;display:flex;align-items:center;gap:6px;}
+  .status-distancia.fora-area{background:#FBE7E4;color:var(--danger, #C24D3A);font-weight:600;}
+
+  /* ACOMPANHAMENTO DO ENTREGADOR */
+  .entregador-tracking{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:14px 0;}
+  #mapaAcompanhamento{height:160px;border-radius:12px;overflow:hidden;}
+
+  /* CONTATO COM A LOJA */
+  .contato-loja{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:14px 0;}
+  .contato-loja-label{font-size:12px;color:var(--ink-soft);margin-bottom:8px;font-weight:600;}
+  .contato-loja-botoes{display:flex;gap:8px;}
+  .btn-contato{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    padding:10px;border-radius:10px;background:var(--card);border:1px solid var(--line);
+    color:var(--ink);font-size:12.5px;font-weight:600;text-decoration:none;}
+
+  /* MEUS PEDIDOS */
+  .meu-pedido-item{display:flex;justify-content:space-between;align-items:center;background:var(--card);
+    border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px;}
+  .meu-pedido-info h4{font-size:13.5px;font-weight:600;}
+  .meu-pedido-info small{color:var(--muted);font-size:11.5px;display:block;margin-top:2px;}
+  .meu-pedido-status{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:100px;background:var(--paper);
+    color:var(--ink-soft);white-space:nowrap;margin-left:8px;}
+  .meu-pedido-status.finalizado{background:#E3F5EA;color:var(--success);}
+  .meu-pedido-status.cancelado{background:#FBE7E4;color:var(--danger, #C24D3A);}
+</style>
+</head>
+<body>
+
+<header class="loja">
+  <div class="loja-top">
+    <div class="loja-logo" id="lojaLogo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 2v7"/><path d="M4.5 2v3.5a2 2 0 0 0 4 0V2"/><path d="M6.5 9v13"/><path d="M17.5 2c-1.8 0-2.8 2.2-2.8 5s1 4 2.8 4v11"/></svg></div>
+    <div class="loja-info">
+      <h1 id="lojaNome">Carregando…</h1>
+      <div class="status-pill"><span class="dot" id="statusDot"></span><span id="statusTexto">—</span></div>
+    </div>
+  </div>
+  <div class="loja-toggle-row">
+    <button class="loja-toggle-pill" id="pillEntrega" onclick="setTipoEntregaPreview('entrega')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="11" height="7" rx="1"/><path d="M13.5 12h3.6l3.4 3v1h-3"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg> Entrega</button>
+    <button class="loja-toggle-pill" id="pillRetirada" onclick="setTipoEntregaPreview('retirada')"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8h11l-1 12h-9Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg> Retirada</button>
+  </div>
+  <div class="loja-meta">
+    <span id="metaHorario"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3.5 2"/></svg> —</span>
+    <span id="metaTempoEntrega"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="11" height="7" rx="1"/><path d="M13.5 12h3.6l3.4 3v1h-3"/><circle cx="6.5" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/></svg> —</span>
+    <span id="metaTaxa"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v9"/><path d="M15 9.8c0-1.3-1.4-1.8-3-1.8s-3 .6-3 1.8c0 2.6 6 1.2 6 3.9 0 1.3-1.4 1.8-3 1.8s-3-.5-3-1.8"/></svg> Taxa varia por bairro</span>
+  </div>
+  <div class="busca">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+    <input id="buscaInput" placeholder="Buscar no cardápio">
+  </div>
+</header>
+
+<section class="destaques hide" id="destaquesSection">
+  <h2>Destaques</h2>
+  <div class="destaques-grid" id="destaquesGrid"></div>
+</section>
+
+<nav class="categorias" id="categoriasNav"></nav>
+<main id="listaProdutos"></main>
+
+<nav class="bottom-nav">
+  <button class="bottom-nav-item ativo" id="navInicio" onclick="irParaInicio()">
+    <span class="bottom-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/></svg></span><span>Início</span>
+  </button>
+  <button class="bottom-nav-item" id="navCardapio" onclick="irParaCardapio()">
+    <span class="bottom-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="14" y2="17"/></svg></span><span>Cardápio</span>
+  </button>
+  <button class="bottom-nav-item" id="navPedidos" onclick="irParaMeusPedidos()">
+    <span class="bottom-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v17l-3-2-3 2-3-2-3 2Z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/></svg><span class="bottom-nav-badge hide" id="pedidosBadge">0</span></span><span>Pedidos</span>
+  </button>
+  <button class="bottom-nav-item" id="navCarrinho" onclick="irParaCarrinho()">
+    <span class="bottom-nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.5"/><circle cx="17" cy="20" r="1.5"/><path d="M2.5 4h2l2.2 12.2a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L20.5 7H6"/></svg><span class="bottom-nav-badge hide" id="carrinhoBadge">0</span></span><span>Carrinho</span>
+  </button>
+</nav>
+
+<!-- SHEET: Meus pedidos -->
+<div class="overlay hide" id="overlayMeusPedidos">
+  <div class="sheet" style="position:relative;">
+    <button class="sheet-close" onclick="fecharOverlay('overlayMeusPedidos')">✕</button>
+    <div class="sheet-handle"></div>
+    <h2 style="font-size:17px;margin-bottom:14px;">Meus pedidos</h2>
+    <div id="meusPedidosLista"></div>
+  </div>
+</div>
+
+<!-- SHEET: Produto detalhe -->
+<div class="overlay hide" id="overlayProduto">
+  <div class="sheet" style="position:relative;">
+    <button class="sheet-close" onclick="fecharOverlay('overlayProduto')">✕</button>
+    <div class="sheet-handle"></div>
+    <div class="produto-detalhe" id="produtoDetalheConteudo"></div>
+  </div>
+</div>
+
+<!-- SHEET: Carrinho -->
+<div class="overlay hide" id="overlayCarrinho">
+  <div class="sheet" style="position:relative;">
+    <button class="sheet-close" onclick="fecharOverlay('overlayCarrinho')">✕</button>
+    <div class="sheet-handle"></div>
+    <h2 style="font-size:17px;margin-bottom:14px;">Seu pedido</h2>
+    <div id="carrinhoItens"></div>
+    <div id="carrinhoResumoValores" style="margin-top:10px;"></div>
+    <button class="btn-primario" id="btnIrCheckout" onclick="abrirCheckout()">
+      <span>Continuar</span><span id="btnCheckoutValor"></span>
+    </button>
+  </div>
+</div>
+
+<!-- SHEET: Checkout -->
+<div class="overlay hide" id="overlayCheckout">
+  <div class="sheet" style="position:relative;">
+    <button class="sheet-close" onclick="fecharOverlay('overlayCheckout')">✕</button>
+    <div class="sheet-handle"></div>
+    <div id="checkoutConteudo"></div>
+  </div>
+</div>
+
+<!-- SHEET: Status do pedido -->
+<div class="overlay hide" id="overlayStatus">
+  <div class="sheet" style="position:relative;">
+    <div class="sheet-handle"></div>
+    <div id="statusConteudo"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
