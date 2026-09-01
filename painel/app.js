@@ -178,6 +178,7 @@ async function iniciarPainel() {
   await carregarProdutos();
   await carregarRaiosEntrega();
   await carregarEntregadores();
+  await carregarCredenciaisIfood();
   await carregarPedidos();
   await carregarContagemClientes();
   await carregarHistoricoVendas();
@@ -186,6 +187,7 @@ async function iniciarPainel() {
   renderCardapioAdmin();
   renderRaiosEntrega();
   renderDadosLoja();
+  renderCredenciaisIfood();
 
   // Realtime: qualquer novo pedido ou mudança de status atualiza o kanban
   PEDIDOS_CHANNEL_ATIVO = sb.channel('painel-pedidos-' + LOJA.id)
@@ -989,6 +991,65 @@ async function salvarDadosLoja() {
     document.getElementById('sidebarLojaNome').textContent = LOJA.nome;
     atualizarSidebarLogo();
     alert('Dados da loja atualizados!');
+  } catch (err) {
+    console.error(err);
+    alert('Não foi possível salvar. Tente novamente.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+// ============================================================
+// IFOOD — Fase 1: só armazenamento seguro da chave (client_id/secret).
+// A tabela ifood_credenciais só é visível pro dono autenticado da loja
+// (RLS), nunca pro anon — veja migracao_v11.sql.
+// ============================================================
+let IFOOD_CREDENCIAIS = null;
+
+async function carregarCredenciaisIfood() {
+  const { data, error } = await sb.from('ifood_credenciais').select('*').eq('estabelecimento_id', LOJA.id).maybeSingle();
+  if (error) { console.error('Erro ao carregar credenciais do iFood:', error); return; }
+  IFOOD_CREDENCIAIS = data;
+}
+
+function renderCredenciaisIfood() {
+  const status = document.getElementById('ifoodStatusTexto');
+  if (!status) return;
+  document.getElementById('ifoodClientId').value = IFOOD_CREDENCIAIS?.client_id || '';
+  if (IFOOD_CREDENCIAIS) {
+    const ultimos4 = IFOOD_CREDENCIAIS.client_secret.slice(-4);
+    status.textContent = `Configurado — Client Secret salvo terminando em ****${ultimos4}`;
+    status.style.color = 'var(--success)';
+  } else {
+    status.textContent = 'Ainda não configurado.';
+    status.style.color = 'var(--muted)';
+  }
+}
+
+async function salvarCredenciaisIfood() {
+  const clientId = document.getElementById('ifoodClientId').value.trim();
+  const clientSecret = document.getElementById('ifoodClientSecret').value.trim();
+  if (!clientId) return alert('Preencha o Client ID.');
+  if (!clientSecret && !IFOOD_CREDENCIAIS) return alert('Preencha o Client Secret.');
+
+  const btn = document.getElementById('btnSalvarIfood');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+
+  try {
+    const dados = { estabelecimento_id: LOJA.id, client_id: clientId, atualizado_em: new Date().toISOString() };
+    if (clientSecret) dados.client_secret = clientSecret;
+    else dados.client_secret = IFOOD_CREDENCIAIS.client_secret; // mantém o segredo atual se o campo ficou em branco
+
+    const { error } = await sb.from('ifood_credenciais').upsert(dados, { onConflict: 'estabelecimento_id' });
+    if (error) throw error;
+
+    await carregarCredenciaisIfood();
+    document.getElementById('ifoodClientSecret').value = '';
+    renderCredenciaisIfood();
+    alert('Credenciais do iFood salvas!');
   } catch (err) {
     console.error(err);
     alert('Não foi possível salvar. Tente novamente.');

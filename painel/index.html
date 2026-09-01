@@ -222,6 +222,7 @@
       <button class="sidebar-item" data-view="viewEntregas" onclick="mudarView('viewEntregas')">Entregas</button>
       <button class="sidebar-item" data-view="viewEntregadores" onclick="mudarView('viewEntregadores')">Entregadores</button>
       <button class="sidebar-item" data-view="viewConfig" onclick="mudarView('viewConfig')">Config</button>
+      <button class="sidebar-item" data-view="viewIfood" onclick="mudarView('viewIfood')">iFood</button>
     </nav>
   </aside>
 
@@ -304,6 +305,19 @@
         <div class="seletor-cores" id="seletorCores"></div>
       </div>
       <button class="btn-secundario" id="btnSalvarDadosLoja" onclick="salvarDadosLoja()">Salvar dados da loja</button>
+    </section>
+
+    <!-- IFOOD (Fase 1 — só armazenamento seguro da chave) -->
+    <section class="view" id="viewIfood">
+      <h3 style="font-size:14px;margin-bottom:4px;">Integração com o iFood</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+        Por enquanto isso só guarda o Client ID e o Client Secret da sua aplicação no iFood, de forma segura
+        (só você enxerga). A autorização com o iFood e a chegada automática dos pedidos ainda não estão prontas.
+      </p>
+      <p id="ifoodStatusTexto" style="font-size:13px;font-weight:600;margin-bottom:14px;">Carregando…</p>
+      <div class="campo"><label>Client ID</label><input id="ifoodClientId" autocomplete="off"></div>
+      <div class="campo"><label>Client Secret</label><input id="ifoodClientSecret" type="password" autocomplete="new-password" placeholder="Deixe em branco pra manter o atual"></div>
+      <button class="btn-secundario" id="btnSalvarIfood" onclick="salvarCredenciaisIfood()">Salvar credenciais do iFood</button>
     </section>
 
     <!-- ENTREGAS (raio de distância) -->
