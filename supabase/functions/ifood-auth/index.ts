@@ -10,8 +10,9 @@
 //
 // Segredos necessários (Project Settings → Edge Functions → Secrets):
 //   SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY já existem automaticamente.
-//   SUPABASE_ANON_KEY precisa ser configurada manualmente (usada só pra
-//   validar, via RLS, que quem chamou é dono da loja).
+//   PROJECT_ANON_KEY precisa ser configurada manualmente (usada só pra
+//   validar, via RLS, que quem chamou é dono da loja) — não pode se
+//   chamar SUPABASE_ANON_KEY porque o Supabase reserva esse prefixo.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -29,7 +30,7 @@ function jsonResponse(body: unknown, status = 200) {
 async function validarDonoDaLoja(req: Request, estabelecimentoId: string): Promise<boolean> {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return false;
-  const supabaseComoUsuario = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+  const supabaseComoUsuario = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('PROJECT_ANON_KEY')!, {
     global: { headers: { Authorization: authHeader } }
   });
   const { data: userData } = await supabaseComoUsuario.auth.getUser();
