@@ -51,6 +51,8 @@
   .btn-primario{width:100%;background:var(--ink);color:#fff;padding:13px;border-radius:12px;font-size:14px;font-weight:700;margin-top:6px;}
   .btn-secundario{width:100%;background:var(--paper);border:1px solid var(--line);color:var(--ink);padding:12px;border-radius:12px;font-size:13.5px;font-weight:600;margin-top:8px;display:inline-flex;align-items:center;justify-content:center;gap:7px;}
   .erro{color:var(--danger);font-size:12.5px;margin-top:8px;}
+  .periodo-financeiro-btn{background:var(--paper);border:1px solid var(--line);color:var(--ink);padding:9px 16px;border-radius:100px;font-size:13px;font-weight:600;}
+  .periodo-financeiro-btn.ativa{background:rgba(255,90,54,0.1);border-color:var(--accent);color:var(--accent);}
 
   /* HEADER PAINEL */
   header.painel{background:var(--ink);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;}
@@ -224,6 +226,7 @@
       <button class="sidebar-item" data-view="viewEntregadores" onclick="mudarView('viewEntregadores')">Entregadores</button>
       <button class="sidebar-item" data-view="viewConfig" onclick="mudarView('viewConfig')">Config</button>
       <button class="sidebar-item" data-view="viewIfood" onclick="mudarView('viewIfood')">iFood</button>
+      <button class="sidebar-item" data-view="viewFinanceiro" onclick="mudarView('viewFinanceiro')">Financeiro</button>
     </nav>
   </aside>
 
@@ -334,6 +337,34 @@
         <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">2. Depois de autorizar lá, volte aqui e confirme:</p>
         <div class="campo"><label>Código de autorização (só se o iFood pedir um diferente do de cima)</label><input id="ifoodCodigoAutorizacao"></div>
         <button class="btn-secundario" id="btnConfirmarAutorizacaoIfood" onclick="confirmarAutorizacaoIfood()">Já autorizei, confirmar</button>
+      </div>
+    </section>
+
+    <!-- FINANCEIRO -->
+    <section class="view" id="viewFinanceiro">
+      <div class="periodo-financeiro" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="periodo-financeiro-btn ativa" data-periodo="hoje" onclick="selecionarPeriodoFinanceiro('hoje')">Hoje</button>
+        <button class="periodo-financeiro-btn" data-periodo="7dias" onclick="selecionarPeriodoFinanceiro('7dias')">7 dias</button>
+        <button class="periodo-financeiro-btn" data-periodo="mes" onclick="selecionarPeriodoFinanceiro('mes')">Este mês</button>
+        <button class="periodo-financeiro-btn" data-periodo="personalizado" onclick="selecionarPeriodoFinanceiro('personalizado')">Personalizado</button>
+      </div>
+      <div id="financeiroPersonalizado" class="campo-linha hide" style="margin-bottom:16px;">
+        <div class="campo"><label>De</label><input type="date" id="financeiroDataInicio"></div>
+        <div class="campo"><label>Até</label><input type="date" id="financeiroDataFim"></div>
+        <button class="btn-secundario" onclick="aplicarPeriodoPersonalizado()" style="align-self:flex-end;">Aplicar</button>
+      </div>
+
+      <div class="cards-grid">
+        <div class="stat-card verde"><div class="valor" id="finFaturamento">R$ 0</div><div class="label">Faturamento no período</div></div>
+        <div class="stat-card azul"><div class="valor" id="finTaxaEntrega">R$ 0</div><div class="label">Taxa de entrega arrecadada</div></div>
+        <div class="stat-card laranja"><div class="valor" id="finTicketMedio">R$ 0</div><div class="label">Ticket médio</div></div>
+        <div class="stat-card vermelho"><div class="valor" id="finPedidos">0</div><div class="label">Pedidos no período</div></div>
+      </div>
+
+      <div class="painel-card" style="margin-top:16px;">
+        <h3>Faturamento por forma de pagamento</h3>
+        <div class="grafico-wrap" style="height:200px;"><canvas id="graficoFinanceiro"></canvas></div>
+        <div class="legenda-donut" id="legendaFinanceiro"></div>
       </div>
     </section>
 

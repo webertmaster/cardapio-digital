@@ -232,7 +232,7 @@ function abrirProduto(id) {
     grupos: (p.grupos_ingredientes || []).filter(g => g.ativo).map(g => ({
       nome: g.nome, limite: g.limite_escolha,
       ingredientes: (g.ingredientes || []).filter(i => i.ativo).map(i => ({
-        nome: i.nome, padrao: i.incluido_padrao,
+        nome: i.nome, padrao: i.incluido_padrao, foto: i.foto_url || null,
         // Categoria com limite de escolha sempre começa zerada — o cliente
         // escolhe ativamente quantas quiser de cada item, até o limite
         // total da categoria (igual iFood). Sem limite, mantém o
@@ -250,7 +250,7 @@ function abrirProduto(id) {
     </div>
     ${g.ingredientes.map((ing, ii) => g.limite ? `
       <div class="ingrediente-toggle-row">
-        <span>${ing.nome}</span>
+        <span>${ing.foto ? `<img src="${ing.foto}" class="ingrediente-thumb">` : ''}${ing.nome}</span>
         <div class="stepper-ingrediente">
           <button type="button" onclick="alterarQtdIngrediente(${gi}, ${ii}, -1)">−</button>
           <span id="qtdIng_${gi}_${ii}">${ing.qtd}</span>
@@ -258,7 +258,7 @@ function abrirProduto(id) {
         </div>
       </div>` : `
       <div class="adicional-row">
-        <label><input type="checkbox" ${ing.incluido ? 'checked' : ''} onchange="toggleIngredienteSemLimite(${gi}, ${ii}, this)"> ${ing.nome}</label>
+        <label><input type="checkbox" ${ing.incluido ? 'checked' : ''} onchange="toggleIngredienteSemLimite(${gi}, ${ii}, this)"> ${ing.foto ? `<img src="${ing.foto}" class="ingrediente-thumb">` : ''}${ing.nome}</label>
         ${!ing.padrao ? '<span class="adicional-preco">opcional</span>' : ''}
       </div>`).join('')}
   `).join('');

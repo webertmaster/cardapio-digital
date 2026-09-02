@@ -228,6 +228,7 @@ function mudarView(id) {
   document.getElementById('fabProduto').classList.toggle('hide', id !== 'viewCardapio');
   if (id === 'viewEntregas') ativarViewEntregas();
   if (id === 'viewEntregadores') ativarViewEntregadores();
+  if (id === 'viewFinanceiro') ativarViewFinanceiro();
 }
 
 function abrirOverlay(id) { document.getElementById(id).classList.remove('hide'); }
@@ -639,6 +640,94 @@ function renderGraficoOrigem(validos) {
 }
 
 // ============================================================
+// FINANCEIRO
+// ============================================================
+let PERIODO_FINANCEIRO = 'hoje';
+let PEDIDOS_FINANCEIRO = [];
+let CHART_FINANCEIRO = null;
+
+function ativarViewFinanceiro() {
+  selecionarPeriodoFinanceiro(PERIODO_FINANCEIRO);
+}
+
+function selecionarPeriodoFinanceiro(periodo) {
+  PERIODO_FINANCEIRO = periodo;
+  document.querySelectorAll('.periodo-financeiro-btn').forEach(b => b.classList.toggle('ativa', b.dataset.periodo === periodo));
+  document.getElementById('financeiroPersonalizado').classList.toggle('hide', periodo !== 'personalizado');
+  if (periodo === 'personalizado') return; // só carrega quando o usuário confirmar as datas
+  carregarFinanceiro();
+}
+
+function aplicarPeriodoPersonalizado() {
+  const dataInicio = document.getElementById('financeiroDataInicio').value;
+  const dataFim = document.getElementById('financeiroDataFim').value;
+  if (!dataInicio || !dataFim) return alert('Escolha as duas datas.');
+  carregarFinanceiro();
+}
+
+function calcularIntervaloFinanceiro() {
+  const agora = new Date();
+  if (PERIODO_FINANCEIRO === 'personalizado') {
+    const inicio = new Date(document.getElementById('financeiroDataInicio').value + 'T00:00:00');
+    const fim = new Date(document.getElementById('financeiroDataFim').value + 'T23:59:59');
+    return { inicio, fim };
+  }
+  const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
+  if (PERIODO_FINANCEIRO === '7dias') inicio.setDate(inicio.getDate() - 6);
+  if (PERIODO_FINANCEIRO === 'mes') inicio.setDate(1);
+  return { inicio, fim: agora };
+}
+
+async function carregarFinanceiro() {
+  const { inicio, fim } = calcularIntervaloFinanceiro();
+  const { data, error } = await sb.from('pedidos')
+    .select('total, taxa_entrega, forma_pagamento, status, criado_em')
+    .eq('estabelecimento_id', LOJA.id)
+    .gte('criado_em', inicio.toISOString())
+    .lte('criado_em', fim.toISOString());
+  if (error) { console.error('Erro ao carregar financeiro:', error); return; }
+  PEDIDOS_FINANCEIRO = data || [];
+  renderFinanceiro();
+}
+
+const LABEL_FORMA_PAGAMENTO = { pix: 'PIX', dinheiro: 'Dinheiro', cartao: 'Cartão', pdv: 'No caixa', ifood: 'iFood' };
+
+function renderFinanceiro() {
+  const validos = PEDIDOS_FINANCEIRO.filter(p => p.status !== 'cancelado' && p.status !== 'recusado');
+  const faturamento = validos.reduce((s, p) => s + Number(p.total), 0);
+  const taxasEntrega = validos.reduce((s, p) => s + Number(p.taxa_entrega || 0), 0);
+
+  document.getElementById('finFaturamento').textContent = fmt(faturamento);
+  document.getElementById('finTaxaEntrega').textContent = fmt(taxasEntrega);
+  document.getElementById('finTicketMedio').textContent = fmt(validos.length ? faturamento / validos.length : 0);
+  document.getElementById('finPedidos').textContent = validos.length;
+
+  const canvas = document.getElementById('graficoFinanceiro');
+  const legenda = document.getElementById('legendaFinanceiro');
+  if (CHART_FINANCEIRO) CHART_FINANCEIRO.destroy();
+
+  const porFormaPagamento = {};
+  validos.forEach(p => { porFormaPagamento[p.forma_pagamento] = (porFormaPagamento[p.forma_pagamento] || 0) + Number(p.total); });
+  const formas = Object.keys(porFormaPagamento);
+
+  if (!formas.length) {
+    legenda.innerHTML = `<div class="empty-state">Nenhum pedido nesse período.</div>`;
+    return;
+  }
+
+  const dados = formas.map(f => porFormaPagamento[f]);
+  const cores = formas.map((_, i) => PALETA_DONUT[i % PALETA_DONUT.length]);
+  CHART_FINANCEIRO = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: formas.map(f => LABEL_FORMA_PAGAMENTO[f] || f), datasets: [{ data: dados, backgroundColor: cores, borderWidth: 0 }] },
+    options: { responsive: true, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { display: false } } }
+  });
+  legenda.innerHTML = formas.map((f, i) => `
+    <div class="legenda-item"><span><span class="legenda-dot" style="background:${cores[i]}"></span>${LABEL_FORMA_PAGAMENTO[f] || f}</span><span>${fmt(dados[i])}</span></div>
+  `).join('');
+}
+
+// ============================================================
 // CARDÁPIO (produtos + categorias)
 // ============================================================
 async function carregarCategorias() {
@@ -677,13 +766,19 @@ async function toggleDisponibilidade(id) {
 
 let FOTO_SELECIONADA = null; // arquivo escolhido, aguardando upload ao salvar
 let GRUPOS_INGREDIENTES_FORM = [];
+// Fotos de ingrediente escolhidas mas ainda não enviadas, chaveadas por
+// "gi_ii" (índice do grupo + índice do ingrediente) — ingrediente não tem
+// id estável antes de salvar (o sync é delete-and-reinsert), então não dá
+// pra usar uma variável única como FOTO_SELECIONADA.
+let FOTOS_INGREDIENTES_PENDENTES = {};
 
 function abrirFormProduto(id = null) {
   FOTO_SELECIONADA = null;
+  FOTOS_INGREDIENTES_PENDENTES = {};
   const p = id ? PRODUTOS.find(x => x.id === id) : null;
   GRUPOS_INGREDIENTES_FORM = p ? (p.grupos_ingredientes || []).map(g => ({
     nome: g.nome, limite_escolha: g.limite_escolha,
-    ingredientes: (g.ingredientes || []).map(i => ({ nome: i.nome, incluido_padrao: i.incluido_padrao }))
+    ingredientes: (g.ingredientes || []).map(i => ({ nome: i.nome, incluido_padrao: i.incluido_padrao, foto_url: i.foto_url || null }))
   })) : [];
   const categoriaAtual = p ? (CATEGORIAS.find(c => c.id === p.categoria_id)?.nome || '') : '';
   const opcoesCategoria = CATEGORIAS.map(c => `<option value="${c.nome}">`).join('');
@@ -748,7 +843,13 @@ function renderGruposIngredientesForm() {
       </div>
       ${g.ingredientes.map((ing, ii) => `
         <div class="linha-detalhe">
-          <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" ${ing.incluido_padrao ? 'checked' : ''} onchange="GRUPOS_INGREDIENTES_FORM[${gi}].ingredientes[${ii}].incluido_padrao=this.checked"> ${ing.nome}</label>
+          <label style="display:flex;align-items:center;gap:8px;">
+            <input type="file" accept="image/*" id="fotoIng_${gi}_${ii}" class="hide" onchange="previsualizarFotoIngrediente(event, ${gi}, ${ii})">
+            <span class="ingrediente-thumb-form" id="thumbIng_${gi}_${ii}" onclick="document.getElementById('fotoIng_${gi}_${ii}').click()"
+              style="width:24px;height:24px;border-radius:50%;flex-shrink:0;cursor:pointer;background:var(--card) center/cover no-repeat;border:1px dashed var(--line);
+              ${ing.foto_url ? `background-image:url('${ing.foto_url}');border-style:solid;` : ''}"></span>
+            <input type="checkbox" ${ing.incluido_padrao ? 'checked' : ''} onchange="GRUPOS_INGREDIENTES_FORM[${gi}].ingredientes[${ii}].incluido_padrao=this.checked"> ${ing.nome}
+          </label>
           <button type="button" class="link-remover" style="color:var(--danger);background:none;font-size:11px;" onclick="removerIngredienteDoGrupo(${gi}, ${ii})">remover</button>
         </div>
       `).join('') || `<p style="font-size:11.5px;color:var(--muted);margin:4px 0;">Nenhum ingrediente nessa categoria ainda.</p>`}
@@ -774,6 +875,7 @@ function adicionarGrupoIngrediente() {
 
 function removerGrupoIngrediente(gi) {
   GRUPOS_INGREDIENTES_FORM.splice(gi, 1);
+  FOTOS_INGREDIENTES_PENDENTES = {}; // índices mudaram, evita foto ir pro ingrediente errado
   renderGruposIngredientesForm();
 }
 
@@ -782,12 +884,25 @@ function adicionarIngredienteAoGrupo(gi) {
   const nome = input.value.trim();
   if (!nome) return;
   const incluidoPadrao = document.getElementById(`novoIngIncluido_${gi}`).checked;
-  GRUPOS_INGREDIENTES_FORM[gi].ingredientes.push({ nome, incluido_padrao: incluidoPadrao });
+  GRUPOS_INGREDIENTES_FORM[gi].ingredientes.push({ nome, incluido_padrao: incluidoPadrao, foto_url: null });
   renderGruposIngredientesForm();
+}
+
+// Guarda o arquivo escolhido (upload real só acontece ao salvar o produto)
+// e já mostra o preview na miniatura circular.
+function previsualizarFotoIngrediente(event, gi, ii) {
+  const arquivo = event.target.files[0];
+  if (!arquivo) return;
+  if (arquivo.size > 5 * 1024 * 1024) { alert('A imagem deve ter até 5MB.'); event.target.value = ''; return; }
+  FOTOS_INGREDIENTES_PENDENTES[`${gi}_${ii}`] = arquivo;
+  const thumb = document.getElementById(`thumbIng_${gi}_${ii}`);
+  thumb.style.backgroundImage = `url('${URL.createObjectURL(arquivo)}')`;
+  thumb.style.borderStyle = 'solid';
 }
 
 function removerIngredienteDoGrupo(gi, ii) {
   GRUPOS_INGREDIENTES_FORM[gi].ingredientes.splice(ii, 1);
+  FOTOS_INGREDIENTES_PENDENTES = {}; // índices mudaram, evita foto ir pro ingrediente errado
   renderGruposIngredientesForm();
 }
 
@@ -872,8 +987,12 @@ async function salvarProduto(id, fotoAtualUrl) {
         .select().single();
       if (erroGrupo) throw erroGrupo;
       if (g.ingredientes.length) {
+        for (let ii = 0; ii < g.ingredientes.length; ii++) {
+          const arquivoPendente = FOTOS_INGREDIENTES_PENDENTES[`${gi}_${ii}`];
+          if (arquivoPendente) g.ingredientes[ii].foto_url = await enviarFotoParaStorage(arquivoPendente);
+        }
         await sb.from('ingredientes').insert(
-          g.ingredientes.map((ing, ii) => ({ grupo_id: novoGrupo.id, nome: ing.nome, incluido_padrao: ing.incluido_padrao, ordem: ii }))
+          g.ingredientes.map((ing, ii) => ({ grupo_id: novoGrupo.id, nome: ing.nome, incluido_padrao: ing.incluido_padrao, foto_url: ing.foto_url || null, ordem: ii }))
         );
       }
     }
