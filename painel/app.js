@@ -36,6 +36,7 @@ function textoFormaPagamento(p, curto = false) {
   if (p.forma_pagamento === 'pix') return curto ? 'PIX' : 'PIX na entrega';
   if (p.forma_pagamento === 'cartao') return curto ? 'Cartão' : 'Cartão na entrega';
   if (p.forma_pagamento === 'pdv') return curto ? 'No caixa' : 'Pagamento no caixa (retirada)';
+  if (p.forma_pagamento === 'ifood') return 'Pago no iFood';
   return curto ? 'Dinheiro' : 'Dinheiro' + (p.troco_para ? ` (troco p/ ${fmt(p.troco_para)})` : '');
 }
 
@@ -313,7 +314,8 @@ function pedidoCardHTML(p, corClasse) {
   const tagCliente = pedidosDoCliente === 1 ? '<span class="tag-cliente">Cliente novo</span>'
     : pedidosDoCliente === 2 ? '<span class="tag-cliente">Segundo pedido</span>' : '';
   const finalizado = p.status === 'entregue' || p.status === 'cancelado' || p.status === 'recusado';
-  const tagCobrar = !finalizado ? '<span class="tag-cobrar">A cobrar</span>' : '';
+  const tagCobrar = !finalizado && p.forma_pagamento !== 'ifood' ? '<span class="tag-cobrar">A cobrar</span>' : '';
+  const tagIfood = p.origem === 'ifood' ? '<span class="tag-ifood">iFood</span>' : '';
   const pagamentoTxt = textoFormaPagamento(p, true);
 
   let acoesHTML = '';
@@ -336,7 +338,7 @@ function pedidoCardHTML(p, corClasse) {
       <div class="linha1"><span>#${p.numero}</span><span>${fmt(p.total)}</span></div>
       <div class="linha2">${hora} • ${p.clientes?.nome || 'Cliente'} • ${p.tipo_entrega === 'entrega' ? 'Entrega' : 'Retirada'}</div>
       <div class="linha3">${pagamentoTxt} · ${p.itens_pedido?.length || 0} ${p.itens_pedido?.length === 1 ? 'item' : 'itens'}</div>
-      <div class="linha-tags">${tagCliente}${tagCobrar}</div>
+      <div class="linha-tags">${tagIfood}${tagCliente}${tagCobrar}</div>
       ${acoesHTML}
       <div class="pedido-card-acoes">${linkMapa}${botaoImprimir}</div>
     </div>`;
@@ -1024,6 +1026,70 @@ function renderCredenciaisIfood() {
   } else {
     status.textContent = 'Ainda não configurado.';
     status.style.color = 'var(--muted)';
+  }
+  renderAutorizacaoIfood();
+}
+
+function renderAutorizacaoIfood() {
+  const statusEl = document.getElementById('ifoodAutorizacaoStatus');
+  if (!statusEl) return;
+  const pendenteBox = document.getElementById('ifoodPendente');
+
+  if (IFOOD_CREDENCIAIS?.autorizado) {
+    statusEl.textContent = 'Autorizado ✅ — pedidos do iFood entram automaticamente no Kanban.';
+    statusEl.style.color = 'var(--success)';
+    pendenteBox.classList.add('hide');
+  } else if (IFOOD_CREDENCIAIS?.user_code) {
+    statusEl.textContent = 'Autorização pendente — falta confirmar.';
+    statusEl.style.color = 'var(--muted)';
+    document.getElementById('ifoodCodigoExibido').textContent = IFOOD_CREDENCIAIS.user_code;
+    document.getElementById('ifoodLinkAutorizacao').href = IFOOD_CREDENCIAIS.verification_url || '#';
+    pendenteBox.classList.remove('hide');
+  } else {
+    statusEl.textContent = 'Não autorizado.';
+    statusEl.style.color = 'var(--muted)';
+    pendenteBox.classList.add('hide');
+  }
+}
+
+async function iniciarAutorizacaoIfood() {
+  if (!IFOOD_CREDENCIAIS?.client_id) return alert('Salve o Client ID e o Client Secret primeiro.');
+  const btn = document.getElementById('btnIniciarAutorizacaoIfood');
+  btn.disabled = true;
+  btn.textContent = 'Gerando código…';
+  try {
+    const { data, error } = await sb.functions.invoke('ifood-auth', { body: { acao: 'iniciar', estabelecimento_id: LOJA.id } });
+    if (error || data?.erro) throw new Error(data?.erro || error.message);
+    await carregarCredenciaisIfood();
+    renderAutorizacaoIfood();
+  } catch (err) {
+    console.error(err);
+    alert('Não foi possível iniciar a autorização: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Autorizar loja no iFood';
+  }
+}
+
+async function confirmarAutorizacaoIfood() {
+  const codigo = document.getElementById('ifoodCodigoAutorizacao').value.trim();
+  const btn = document.getElementById('btnConfirmarAutorizacaoIfood');
+  btn.disabled = true;
+  btn.textContent = 'Confirmando…';
+  try {
+    const { data, error } = await sb.functions.invoke('ifood-auth', {
+      body: { acao: 'confirmar', estabelecimento_id: LOJA.id, codigo_autorizacao: codigo || undefined }
+    });
+    if (error || data?.erro) throw new Error(data?.erro || error.message);
+    await carregarCredenciaisIfood();
+    renderAutorizacaoIfood();
+    alert('Loja autorizada no iFood!');
+  } catch (err) {
+    console.error(err);
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Já autorizei, confirmar';
   }
 }
 
