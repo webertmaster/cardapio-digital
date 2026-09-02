@@ -388,9 +388,18 @@ function renderPedidoDetalhe(p) {
     ? `${p.enderecos.rua}, ${p.enderecos.numero} — ${p.enderecos.bairro}${p.enderecos.complemento ? ' (' + p.enderecos.complemento + ')' : ''}`
     : 'Retirada no local';
 
+  const enderecoEntrega = p.tipo_entrega === 'entrega' ? p.enderecos : null;
   const opcoesEntregador = ENTREGADORES
     .filter(e => e.disponivel || e.id === p.entregador_id)
-    .map(e => `<option value="${e.id}" ${p.entregador_id === e.id ? 'selected' : ''}>${e.nome}${!e.disponivel ? ' (indisponível)' : ''}</option>`).join('');
+    .map(e => {
+      const loc = LOCALIZACOES_ENTREGADORES[e.id];
+      const distanciaTxt = enderecoEntrega?.latitude != null && loc
+        ? ` (${distanciaKm(loc.latitude, loc.longitude, enderecoEntrega.latitude, enderecoEntrega.longitude).toFixed(1)} km)`
+        : '';
+      return { e, distancia: enderecoEntrega?.latitude != null && loc ? distanciaKm(loc.latitude, loc.longitude, enderecoEntrega.latitude, enderecoEntrega.longitude) : Infinity, distanciaTxt };
+    })
+    .sort((a, b) => a.distancia - b.distancia)
+    .map(({ e, distanciaTxt }) => `<option value="${e.id}" ${p.entregador_id === e.id ? 'selected' : ''}>${e.nome}${!e.disponivel ? ' (indisponível)' : ''}${distanciaTxt}</option>`).join('');
   const seletorEntregadorHTML = p.tipo_entrega === 'entrega' ? `
     <div class="campo" style="margin-top:10px;">
       <label>Entregador</label>
@@ -1385,24 +1394,73 @@ let MAPA_ENTREGADORES = null;
 let MARCADOR_LOJA_ENTREGADORES = null;
 let MARCADORES_ENTREGADORES = {};
 let ENTREGADORES_LOC_CHANNEL = null;
+let TOTAL_ENTREGAS = {};
+// Última localização conhecida de cada entregador, pra calcular distância
+// na hora de atribuir um pedido (o mapa guarda isso só dentro dos
+// marcadores do Leaflet, então mantemos uma cópia simples aqui também).
+let LOCALIZACOES_ENTREGADORES = {};
 
 async function carregarEntregadores() {
   const { data } = await sb.from('entregadores').select('*').eq('estabelecimento_id', LOJA.id).eq('ativo', true).order('criado_em');
   ENTREGADORES = data || [];
 }
 
+function distanciaKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function carregarTotalEntregasPorEntregador() {
+  const { data, error } = await sb.from('pedidos')
+    .select('entregador_id')
+    .eq('estabelecimento_id', LOJA.id)
+    .eq('status', 'entregue')
+    .not('entregador_id', 'is', null);
+  if (error) { console.error('Erro ao carregar total de entregas:', error); return; }
+  TOTAL_ENTREGAS = {};
+  (data || []).forEach(p => { TOTAL_ENTREGAS[p.entregador_id] = (TOTAL_ENTREGAS[p.entregador_id] || 0) + 1; });
+}
+
 function renderEntregadores() {
   const cont = document.getElementById('listaEntregadores');
   cont.innerHTML = ENTREGADORES.length ? ENTREGADORES.map(e => `
-    <div class="linha-detalhe">
-      <span>${e.nome}${e.telefone ? ' · ' + e.telefone : ''} · ${e.veiculo === 'bicicleta' ? '🚲 Bicicleta' : '🏍️ Moto'}
-        <span style="color:${e.disponivel ? 'var(--success)' : '#999'};font-size:11px;font-weight:600;margin-left:6px;">● ${e.disponivel ? 'Disponível' : 'Indisponível'}</span>
-      </span>
+    <div class="linha-detalhe entregador-editavel">
+      <div class="entregador-campos">
+        <input type="text" value="${e.nome}" class="entregador-nome-input" onchange="atualizarEntregador('${e.id}', 'nome', this.value)">
+        <input type="text" value="${e.telefone || ''}" placeholder="Telefone" class="entregador-telefone-input" onchange="atualizarEntregador('${e.id}', 'telefone', this.value)">
+        <select class="entregador-veiculo-input" onchange="atualizarEntregador('${e.id}', 'veiculo', this.value)">
+          <option value="moto" ${e.veiculo === 'moto' ? 'selected' : ''}>🏍️ Moto</option>
+          <option value="bicicleta" ${e.veiculo === 'bicicleta' ? 'selected' : ''}>🚲 Bicicleta</option>
+        </select>
+        <span style="color:${e.disponivel ? 'var(--success)' : '#999'};font-size:11px;font-weight:600;">● ${e.disponivel ? 'Disponível' : 'Indisponível'}</span>
+        <span style="font-size:11px;color:var(--muted);">${TOTAL_ENTREGAS[e.id] || 0} entregas</span>
+      </div>
       <span>PIN: <strong>${e.pin}</strong>
         <button class="link-remover" style="color:var(--danger);background:none;font-size:11px;margin-left:8px;" onclick="removerEntregador('${e.id}')">desativar</button>
       </span>
     </div>
   `).join('') : `<div class="empty-state">Nenhum entregador cadastrado ainda.</div>`;
+}
+
+// Edita um campo de entregador direto na lista. Não re-renderiza a lista
+// inteira (só atualiza o array em memória) pra não perder o foco de quem
+// está digitando; se a gravação falhar, avisa e reverte na tela.
+async function atualizarEntregador(id, campo, valor) {
+  const entregador = ENTREGADORES.find(e => e.id === id);
+  if (!entregador) return;
+  const valorAnterior = entregador[campo];
+  entregador[campo] = campo === 'telefone' ? (valor.trim() || null) : valor.trim();
+
+  const { error } = await sb.from('entregadores').update({ [campo]: entregador[campo] }).eq('id', id);
+  if (error) {
+    console.error('Erro ao atualizar entregador:', error);
+    alert('Não foi possível salvar. Tente novamente.');
+    entregador[campo] = valorAnterior;
+    renderEntregadores();
+  }
 }
 
 function gerarPinEntregador() {
@@ -1444,7 +1502,8 @@ async function removerEntregador(id) {
   atualizarSeletorEntregadorPedido();
 }
 
-function ativarViewEntregadores() {
+async function ativarViewEntregadores() {
+  await carregarTotalEntregasPorEntregador();
   renderEntregadores();
   if (MAPA_ENTREGADORES) { setTimeout(() => MAPA_ENTREGADORES.invalidateSize(), 50); return; }
   inicializarMapaEntregadores();
@@ -1486,6 +1545,7 @@ function removerMarcadorEntregador(entregadorId) {
     MAPA_ENTREGADORES.removeLayer(MARCADORES_ENTREGADORES[entregadorId]);
     delete MARCADORES_ENTREGADORES[entregadorId];
   }
+  delete LOCALIZACOES_ENTREGADORES[entregadorId];
   const entregador = ENTREGADORES.find(e => e.id === entregadorId);
   if (entregador && entregador.disponivel) {
     entregador.disponivel = false;
@@ -1504,12 +1564,18 @@ async function carregarLocalizacoesEntregadores() {
   Object.keys(MARCADORES_ENTREGADORES).forEach((id) => {
     if (!presentes.has(id)) removerMarcadorEntregador(id);
   });
+  Object.keys(LOCALIZACOES_ENTREGADORES).forEach((id) => {
+    if (!presentes.has(id)) delete LOCALIZACOES_ENTREGADORES[id];
+  });
 }
 
 function atualizarMarcadorEntregador(loc) {
-  if (!MAPA_ENTREGADORES || loc.latitude == null || loc.longitude == null) return;
+  if (loc.latitude == null || loc.longitude == null) return;
   const entregador = ENTREGADORES.find(e => e.id === loc.entregador_id);
   if (!entregador) return; // não é entregador desta loja
+  LOCALIZACOES_ENTREGADORES[loc.entregador_id] = { latitude: loc.latitude, longitude: loc.longitude };
+
+  if (!MAPA_ENTREGADORES) return;
 
   if (!entregador.disponivel) {
     entregador.disponivel = true;
