@@ -63,6 +63,11 @@ let LOJA_WHATSAPP = null;
 let ENTREGAS_HOJE = 0;
 // null = ainda não carregou nada (não alerta na primeira carga da lista)
 let IDS_PEDIDOS_CONHECIDOS = null;
+// Última posição conhecida do GPS — usada como ponto de partida ao
+// planejar a rota com múltiplas entregas (ver ativarRastreamento()).
+let ULTIMA_POSICAO = null;
+let PEDIDOS_SELECIONADOS_ROTA = new Set();
+let MAPA_ROTA = null;
 
 // Fórmula de haversine — mesma usada no cardápio do cliente pra calcular
 // a distância entre a loja e o endereço de entrega.
@@ -162,6 +167,9 @@ function pedidoEntregaCardHTML(p) {
   const botaoRota = temCoordenadas
     ? `<button class="btn-rota" onclick="abrirRota(${p.enderecos.latitude}, ${p.enderecos.longitude})">🗺️ Rota</button>`
     : '';
+  const checkboxRota = temCoordenadas
+    ? `<label class="check-rota"><input type="checkbox" ${PEDIDOS_SELECIONADOS_ROTA.has(p.id) ? 'checked' : ''} onchange="toggleSelecaoRota('${p.id}')"> Incluir na rota</label>`
+    : '';
   const distanciaTxt = (temCoordenadas && LOJA_COORDS)
     ? ` <strong>(${distanciaKm(LOJA_COORDS.lat, LOJA_COORDS.lng, p.enderecos.latitude, p.enderecos.longitude).toFixed(1)} km da loja)</strong>`
     : '';
@@ -189,7 +197,119 @@ function pedidoEntregaCardHTML(p) {
         ${podeRetirar ? `<button class="btn-retirei" onclick="marcarSaiuEntrega('${p.id}')">📦 Retirei o pedido</button>` : ''}
         ${podeMarcarEntregue ? `<button class="btn-entregue" onclick="marcarEntregue('${p.id}')">✓ Entregue</button>` : ''}
       </div>
+      ${checkboxRota}
     </div>`;
+}
+
+// ============================================================
+// ROTA COM MÚLTIPLAS ENTREGAS (opcional — o entregador marca quais
+// pedidos quer incluir, a gente calcula a melhor ordem de visita e
+// entrega a sequência pronta pro Google Maps navegar de verdade)
+// ============================================================
+function toggleSelecaoRota(pedidoId) {
+  if (PEDIDOS_SELECIONADOS_ROTA.has(pedidoId)) PEDIDOS_SELECIONADOS_ROTA.delete(pedidoId);
+  else PEDIDOS_SELECIONADOS_ROTA.add(pedidoId);
+  atualizarBotaoRota();
+}
+
+function atualizarBotaoRota() {
+  const btn = document.getElementById('btnPlanejarRota');
+  const n = PEDIDOS_SELECIONADOS_ROTA.size;
+  btn.classList.toggle('hide', n < 2);
+  document.getElementById('textoPlanejarRota').textContent = `Planejar rota (${n})`;
+}
+
+// Vizinho mais próximo: a cada passo, vai pro ponto restante mais perto
+// de onde está. Não é o ótimo matemático (isso seria um TSP), mas pra
+// poucas paradas (2-6) dá uma ordem muito boa e é simples de explicar.
+function calcularMelhorOrdem(origem, pontos) {
+  const restantes = [...pontos];
+  const ordenados = [];
+  let atual = origem;
+  while (restantes.length) {
+    let iMaisPerto = 0;
+    let menorDist = Infinity;
+    restantes.forEach((p, i) => {
+      const d = distanciaKm(atual.lat, atual.lng, p.lat, p.lng);
+      if (d < menorDist) { menorDist = d; iMaisPerto = i; }
+    });
+    const [proximo] = restantes.splice(iMaisPerto, 1);
+    ordenados.push(proximo);
+    atual = proximo;
+  }
+  return ordenados;
+}
+
+function abrirModalRota() {
+  const origem = ULTIMA_POSICAO || LOJA_COORDS;
+  if (!origem) { alert('Aguarde sua localização ser encontrada antes de planejar a rota.'); return; }
+
+  const pontos = PEDIDOS_ENTREGADOR
+    .filter(p => PEDIDOS_SELECIONADOS_ROTA.has(p.id) && p.enderecos?.latitude != null)
+    .map(p => ({
+      lat: p.enderecos.latitude, lng: p.enderecos.longitude,
+      nome: p.clientes?.nome || 'Cliente', numero: p.numero,
+      endereco: `${p.enderecos.rua}, ${p.enderecos.numero} — ${p.enderecos.bairro}`
+    }));
+  if (pontos.length < 2) return;
+
+  const ordem = calcularMelhorOrdem(origem, pontos);
+
+  document.getElementById('listaRotaOrdenada').innerHTML = ordem.map((p, i) => `
+    <div class="parada-rota">
+      <span class="numero">${i + 1}</span>
+      <div class="info"><strong>#${p.numero} — ${p.nome}</strong><span>${p.endereco}</span></div>
+    </div>
+  `).join('');
+
+  document.getElementById('modalRota').classList.remove('hide');
+  setTimeout(() => desenharMapaRota(origem, ordem), 50);
+}
+
+function desenharMapaRota(origem, ordem) {
+  if (MAPA_ROTA) { MAPA_ROTA.remove(); MAPA_ROTA = null; }
+  MAPA_ROTA = L.map('mapaRota').setView([origem.lat, origem.lng], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap', maxZoom: 19
+  }).addTo(MAPA_ROTA);
+
+  const pontosMapa = [[origem.lat, origem.lng]];
+  L.marker([origem.lat, origem.lng], {
+    icon: L.divIcon({ className: '', html: '<div class="marcador-numerado" style="background:#14251C;">📍</div>', iconSize: [26, 26] })
+  }).addTo(MAPA_ROTA).bindPopup('Você está aqui');
+
+  ordem.forEach((p, i) => {
+    pontosMapa.push([p.lat, p.lng]);
+    L.marker([p.lat, p.lng], {
+      icon: L.divIcon({ className: '', html: `<div class="marcador-numerado">${i + 1}</div>`, iconSize: [26, 26] })
+    }).addTo(MAPA_ROTA).bindPopup(`${i + 1}º — ${p.nome}`);
+  });
+
+  // O mapa acabou de aparecer dentro do modal — o container pode ainda
+  // não ter o tamanho final calculado, então o Leaflet mede de novo
+  // antes de enquadrar todos os pontos.
+  MAPA_ROTA.invalidateSize();
+  MAPA_ROTA.fitBounds(pontosMapa, { padding: [30, 30] });
+}
+
+function iniciarRotaGoogleMaps() {
+  const origem = ULTIMA_POSICAO || LOJA_COORDS;
+  const pontos = PEDIDOS_ENTREGADOR
+    .filter(p => PEDIDOS_SELECIONADOS_ROTA.has(p.id) && p.enderecos?.latitude != null)
+    .map(p => ({ lat: p.enderecos.latitude, lng: p.enderecos.longitude }));
+  const ordem = calcularMelhorOrdem(origem, pontos);
+
+  const destino = ordem[ordem.length - 1];
+  const paradas = ordem.slice(0, -1);
+  const waypoints = paradas.map(p => `${p.lat},${p.lng}`).join('|');
+
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origem.lat},${origem.lng}&destination=${destino.lat},${destino.lng}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`;
+  window.open(url, '_blank');
+  fecharModalRota();
+}
+
+function fecharModalRota() {
+  document.getElementById('modalRota').classList.add('hide');
 }
 
 function abrirRota(lat, lng) {
@@ -265,6 +385,7 @@ function ativarRastreamento() {
     (pos) => {
       document.getElementById('dotRastreio').classList.remove('off');
       document.getElementById('textoRastreio').textContent = 'Localização ativa';
+      ULTIMA_POSICAO = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       if (!SESSAO.disponivel) return;
       const agora = Date.now();
       if (agora - ULTIMO_ENVIO < INTERVALO_ENVIO_MS) return;

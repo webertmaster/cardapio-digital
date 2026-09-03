@@ -10,6 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root{
     --ink:#14251C; --ink-soft:#2A3F32; --paper:#F5F4EF; --card:#FFFFFF;
@@ -72,6 +73,27 @@
   .entregas-hoje{font-size:11.5px;color:#C9D6CC;margin-top:8px;}
   .link-whatsapp-loja{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:8px;padding:11px;
     border-radius:12px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;font-weight:600;text-decoration:none;}
+
+  /* ROTA COM MÚLTIPLAS ENTREGAS */
+  .check-rota{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-soft);font-weight:600;margin-top:10px;}
+  .btn-planejar-rota{position:fixed;left:16px;right:16px;bottom:16px;z-index:50;background:var(--ink);color:#fff;
+    padding:14px;border-radius:14px;font-size:14px;font-weight:700;box-shadow:0 6px 18px rgba(0,0,0,0.25);
+    display:flex;align-items:center;justify-content:center;gap:8px;}
+
+  #modalRota{position:fixed;inset:0;background:var(--paper);z-index:100;display:flex;flex-direction:column;}
+  #modalRota .modal-header{background:var(--ink);color:#fff;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;}
+  #modalRota .modal-header h2{font-size:16px;}
+  #modalRota .btn-fechar-modal{background:rgba(255,255,255,0.14);color:#fff;width:30px;height:30px;border-radius:50%;font-size:15px;}
+  #mapaRota{height:38vh;flex-shrink:0;}
+  #listaRotaOrdenada{flex:1;overflow-y:auto;padding:14px 16px;}
+  .parada-rota{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);}
+  .parada-rota .numero{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .parada-rota .info strong{font-size:13px;display:block;}
+  .parada-rota .info span{font-size:12px;color:var(--muted);}
+  .marcador-numerado{background:var(--accent);color:#fff;border-radius:50%;width:26px;height:26px;display:flex;
+    align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);}
+  #modalRota .rodape{padding:14px 16px;border-top:1px solid var(--line);background:var(--card);}
 </style>
 </head>
 <body>
@@ -104,9 +126,24 @@
   <main>
     <div id="listaPedidosEntregador"></div>
   </main>
+  <button class="btn-planejar-rota hide" id="btnPlanejarRota" onclick="abrirModalRota()">🧭 <span id="textoPlanejarRota">Planejar rota</span></button>
+</div>
+
+<!-- ROTA COM MÚLTIPLAS ENTREGAS -->
+<div id="modalRota" class="hide">
+  <div class="modal-header">
+    <h2>Sua rota</h2>
+    <button class="btn-fechar-modal" onclick="fecharModalRota()">✕</button>
+  </div>
+  <div id="mapaRota"></div>
+  <div id="listaRotaOrdenada"></div>
+  <div class="rodape">
+    <button class="btn-primario" onclick="iniciarRotaGoogleMaps()">Abrir rota no Google Maps</button>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
