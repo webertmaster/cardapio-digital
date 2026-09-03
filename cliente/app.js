@@ -18,6 +18,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ESTADO GLOBAL
 // ============================================================
 let LOJA = null;
+let HORARIOS_FUNCIONAMENTO = [];
 let CATEGORIAS = [];
 let PRODUTOS = [];
 let RAIOS = [];
@@ -64,6 +65,8 @@ async function iniciar() {
   const { data: loja } = await sb.from('estabelecimentos').select('*').eq('slug', SLUG_LOJA).single();
   if (!loja) { document.getElementById('lojaNome').textContent = 'Loja não encontrada'; return; }
   LOJA = loja;
+  const { data: horarios } = await sb.from('horarios_funcionamento').select('*').eq('estabelecimento_id', LOJA.id);
+  HORARIOS_FUNCIONAMENTO = horarios || [];
   renderHeader();
 
   const { data: categorias } = await sb.from('categorias').select('*').eq('estabelecimento_id', LOJA.id).eq('ativa', true).order('ordem');
@@ -114,11 +117,29 @@ function aplicarCorDestaque() {
   if (metaTheme) metaTheme.setAttribute('content', escurecerHex(cor, 0.65));
 }
 
+// Sem nenhuma linha cadastrada = sem restrição (loja que nunca configurou
+// horário continua abrindo/fechando só pelo botão manual da loja).
+function estaDentroDoHorario(horarios) {
+  if (!horarios || !horarios.length) return true;
+  const agora = new Date();
+  const linha = horarios.find(h => h.dia_semana === agora.getDay());
+  if (!linha || linha.fechado) return false;
+  if (!linha.abre_as || !linha.fecha_as) return true;
+  const [hIni, mIni] = linha.abre_as.split(':').map(Number);
+  const [hFim, mFim] = linha.fecha_as.split(':').map(Number);
+  const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+  const minutosIni = hIni * 60 + mIni;
+  const minutosFim = hFim * 60 + mFim;
+  return minutosIni <= minutosFim
+    ? (minutosAgora >= minutosIni && minutosAgora <= minutosFim)
+    : (minutosAgora >= minutosIni || minutosAgora <= minutosFim);
+}
+
 function renderHeader() {
   aplicarCorDestaque();
   document.getElementById('lojaNome').textContent = LOJA.nome;
   if (LOJA.logo_url) document.getElementById('lojaLogo').innerHTML = `<img src="${LOJA.logo_url}">`;
-  const aberta = LOJA.aberto && !LOJA.pausado_manualmente;
+  const aberta = LOJA.aberto && !LOJA.pausado_manualmente && estaDentroDoHorario(HORARIOS_FUNCIONAMENTO);
   document.getElementById('statusDot').className = 'dot' + (aberta ? '' : ' fechado');
   document.getElementById('statusTexto').textContent = aberta ? 'Aberto agora' : 'Fechado no momento';
   document.getElementById('metaTempoEntrega').innerHTML = `${icon('truck', 13)} ${LOJA.tempo_entrega_min}–${LOJA.tempo_entrega_max} min`;
@@ -466,7 +487,8 @@ let PEDIDO_FORM = {
   cep: '', rua: '', numero: '', bairro: '', complemento: '', referencia: '',
   latitude: null, longitude: null, taxaEntrega: null,
   formaPagamento: 'pix',
-  trocoPara: ''
+  trocoPara: '',
+  cupomCodigo: null, desconto: 0
 };
 
 // ---- Cálculo de taxa por raio de distância (estilo iFood) ----
@@ -681,7 +703,8 @@ function renderCampoTroco() {
 function irParaRevisao() {
   const subtotal = carrinhoSubtotal();
   const taxa = Number(PEDIDO_FORM.taxaEntrega || 0);
-  const total = subtotal + taxa;
+  const desconto = Number(PEDIDO_FORM.desconto || 0);
+  const total = Math.max(0, subtotal + taxa - desconto);
 
   document.getElementById('checkoutConteudo').innerHTML = `
     <h2 style="font-size:17px;margin-bottom:14px;">Revisar pedido</h2>
@@ -694,14 +717,44 @@ function irParaRevisao() {
         </div>
         <strong style="font-size:13.5px;">${fmt(itemTotal(item))}</strong>
       </div>`).join('')}</div>
+    <div class="campo-linha" style="align-items:flex-end;margin-bottom:10px;">
+      <div class="campo" style="flex:1;margin-bottom:0;">
+        <label>Cupom de desconto</label>
+        <input id="inpCupom" placeholder="Ex: PRIMEIRA10" value="${PEDIDO_FORM.cupomCodigo || ''}" style="text-transform:uppercase;">
+      </div>
+      <button class="btn-secundario" style="width:auto;margin-top:0;padding:11px 16px;" onclick="aplicarCupom()">Aplicar</button>
+    </div>
     <div class="resumo-linha"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
     <div class="resumo-linha"><span>Taxa de entrega</span><span>${fmtTaxa(taxa)}</span></div>
+    ${desconto ? `<div class="resumo-linha"><span>Desconto (${PEDIDO_FORM.cupomCodigo})</span><span>− ${fmt(desconto)}</span></div>` : ''}
     <div class="resumo-linha total"><span>Total</span><span>${fmt(total)}</span></div>
     <div class="resumo-linha"><span>Pagamento</span><span>${textoPagamentoCliente()}</span></div>
     <div class="resumo-linha"><span>${PEDIDO_FORM.tipoEntrega === 'entrega' ? 'Endereço' : 'Retirada'}</span>
       <span style="text-align:right;max-width:60%;">${PEDIDO_FORM.tipoEntrega === 'entrega' ? `${PEDIDO_FORM.rua}, ${PEDIDO_FORM.numero} — ${PEDIDO_FORM.bairro}` : 'No local'}</span></div>
     <button class="btn-primario" id="btnFazerPedido" onclick="enviarPedido()"><span>Fazer pedido</span><span>${fmt(total)}</span></button>
   `;
+}
+
+async function aplicarCupom() {
+  const codigo = document.getElementById('inpCupom').value.trim().toUpperCase();
+  if (!codigo) return;
+
+  const { data: cupom } = await sb.from('cupons')
+    .select('*').eq('estabelecimento_id', LOJA.id).eq('codigo', codigo).eq('ativo', true).maybeSingle();
+
+  if (!cupom) { alert('Cupom inválido ou expirado.'); return; }
+  if (cupom.validade && cupom.validade < new Date().toISOString().slice(0, 10)) { alert('Esse cupom já expirou.'); return; }
+
+  const subtotal = carrinhoSubtotal();
+  if (cupom.pedido_minimo && subtotal < cupom.pedido_minimo) {
+    alert(`Esse cupom exige um pedido mínimo de ${fmt(cupom.pedido_minimo)}.`);
+    return;
+  }
+
+  const desconto = cupom.tipo === 'percentual' ? subtotal * (cupom.valor / 100) : cupom.valor;
+  PEDIDO_FORM.cupomCodigo = cupom.codigo;
+  PEDIDO_FORM.desconto = Math.min(desconto, subtotal + Number(PEDIDO_FORM.taxaEntrega || 0));
+  irParaRevisao();
 }
 
 async function enviarPedido() {
@@ -734,11 +787,13 @@ async function enviarPedido() {
     // 3. pedido
     const subtotal = carrinhoSubtotal();
     const taxa = Number(PEDIDO_FORM.taxaEntrega || 0);
+    const desconto = Number(PEDIDO_FORM.desconto || 0);
     const { data: pedido, error: erroPedido } = await sb.from('pedidos').insert({
       estabelecimento_id: LOJA.id, cliente_id: cliente.id, endereco_id: enderecoId,
       tipo_entrega: PEDIDO_FORM.tipoEntrega, forma_pagamento: PEDIDO_FORM.formaPagamento,
       troco_para: PEDIDO_FORM.trocoPara ? Number(PEDIDO_FORM.trocoPara.replace(',', '.')) : null,
-      subtotal, taxa_entrega: taxa, total: subtotal + taxa
+      subtotal, taxa_entrega: taxa, desconto, cupom_codigo: PEDIDO_FORM.cupomCodigo || null,
+      total: Math.max(0, subtotal + taxa - desconto)
     }).select().single();
     if (erroPedido) throw erroPedido;
 
@@ -768,6 +823,8 @@ async function enviarPedido() {
 
     // 5. limpa carrinho e mostra status
     CARRINHO = [];
+    PEDIDO_FORM.cupomCodigo = null;
+    PEDIDO_FORM.desconto = 0;
     atualizarCarrinhoFlutuante();
     localStorage.setItem(LS_PEDIDO, pedido.id);
     PEDIDO_ATUAL_ID = pedido.id;

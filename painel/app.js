@@ -180,6 +180,8 @@ async function iniciarPainel() {
   await carregarRaiosEntrega();
   await carregarEntregadores();
   await carregarCredenciaisIfood();
+  await carregarHorarios();
+  await carregarCupons();
   await carregarPedidos();
   await carregarContagemClientes();
   await carregarHistoricoVendas();
@@ -189,22 +191,46 @@ async function iniciarPainel() {
   renderRaiosEntrega();
   renderDadosLoja();
   renderCredenciaisIfood();
+  renderHorariosForm();
+  renderCupons();
 
-  // Realtime: qualquer novo pedido ou mudança de status atualiza o kanban
+  // Realtime: qualquer novo pedido ou mudança de status atualiza o kanban;
+  // um pedido genuinamente novo (INSERT) também toca um alerta sonoro.
   PEDIDOS_CHANNEL_ATIVO = sb.channel('painel-pedidos-' + LOJA.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `estabelecimento_id=eq.${LOJA.id}` },
-      () => carregarPedidos()
-        .then(() => Promise.all([carregarContagemClientes(), carregarHistoricoVendas()]))
-        .then(() => { renderKanban(); renderDashboard(); }))
+      (payload) => {
+        if (payload.eventType === 'INSERT') alertarPedidoNovoPainel();
+        carregarPedidos()
+          .then(() => Promise.all([carregarContagemClientes(), carregarHistoricoVendas()]))
+          .then(() => { renderKanban(); renderDashboard(); });
+      })
     .subscribe();
 
   ativarPushDaLoja();
 }
 
+// Bipe curto via Web Audio API — mesmo padrão usado no app do entregador,
+// pra avisar de pedido novo mesmo com ninguém de olho na tela do Kanban.
+function alertarPedidoNovoPainel() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(); osc.stop(ctx.currentTime + 0.5);
+  } catch (err) { console.error('Não foi possível tocar o alerta sonoro:', err); }
+}
+
 function atualizarSwitchLoja() {
   const aberta = LOJA.aberto && !LOJA.pausado_manualmente;
-  document.getElementById('switchLoja').className = 'switch' + (aberta ? ' on' : '');
-  document.getElementById('statusLojaTexto').textContent = aberta ? 'Aberto' : 'Fechado';
+  const dentroDoHorario = estaDentroDoHorario(HORARIOS_FUNCIONAMENTO);
+  document.getElementById('switchLoja').className = 'switch' + (aberta && dentroDoHorario ? ' on' : '');
+  document.getElementById('statusLojaTexto').textContent = !aberta
+    ? 'Fechado'
+    : (dentroDoHorario ? 'Aberto' : 'Fechado (fora do horário)');
   const btnPausar = document.getElementById('btnPausarKanban');
   if (btnPausar) {
     btnPausar.textContent = LOJA.pausado_manualmente ? '▶ Retomar pedidos' : '⏸ Pausar loja';
@@ -646,6 +672,151 @@ function renderGraficoOrigem(validos) {
     <div class="legenda-item"><span><span class="legenda-dot" style="background:#FF5A36"></span>Entrega</span><span>${fmt(entrega)}</span></div>
     <div class="legenda-item"><span><span class="legenda-dot" style="background:#2E8B57"></span>Retirada</span><span>${fmt(retirada)}</span></div>
   `;
+}
+
+// ============================================================
+// HORÁRIO DE FUNCIONAMENTO
+// ============================================================
+let HORARIOS_FUNCIONAMENTO = [];
+const DIAS_SEMANA = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+// Sem nenhuma linha cadastrada = sem restrição (loja que nunca configurou
+// horário continua se comportando como antes: só o botão manual manda).
+// Com linhas, olha a de hoje: fechado = fecha; com abre/fecha, compara com
+// a hora atual (tratando o caso de passar da meia-noite, ex: 18:00-02:00).
+function estaDentroDoHorario(horarios) {
+  if (!horarios || !horarios.length) return true;
+  const agora = new Date();
+  const linha = horarios.find(h => h.dia_semana === agora.getDay());
+  if (!linha || linha.fechado) return false;
+  if (!linha.abre_as || !linha.fecha_as) return true;
+  const [hIni, mIni] = linha.abre_as.split(':').map(Number);
+  const [hFim, mFim] = linha.fecha_as.split(':').map(Number);
+  const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+  const minutosIni = hIni * 60 + mIni;
+  const minutosFim = hFim * 60 + mFim;
+  return minutosIni <= minutosFim
+    ? (minutosAgora >= minutosIni && minutosAgora <= minutosFim)
+    : (minutosAgora >= minutosIni || minutosAgora <= minutosFim);
+}
+
+async function carregarHorarios() {
+  const { data } = await sb.from('horarios_funcionamento').select('*').eq('estabelecimento_id', LOJA.id);
+  HORARIOS_FUNCIONAMENTO = data || [];
+}
+
+function renderHorariosForm() {
+  const cont = document.getElementById('listaHorarios');
+  if (!cont) return;
+  cont.innerHTML = DIAS_SEMANA.map((nome, dia) => {
+    const linha = HORARIOS_FUNCIONAMENTO.find(h => h.dia_semana === dia) || { fechado: false, abre_as: '', fecha_as: '' };
+    return `
+    <div class="linha-detalhe linha-horario" data-dia="${dia}">
+      <span style="min-width:80px;">${nome}</span>
+      <label class="campo-checkbox" style="margin:0;"><input type="checkbox" class="horario-fechado" ${linha.fechado ? 'checked' : ''} onchange="atualizarLinhaHorario(${dia})"> Fechado</label>
+      <input type="time" class="horario-abre" value="${linha.abre_as || ''}" ${linha.fechado ? 'disabled' : ''}>
+      <span>até</span>
+      <input type="time" class="horario-fecha" value="${linha.fecha_as || ''}" ${linha.fechado ? 'disabled' : ''}>
+    </div>`;
+  }).join('');
+}
+
+function atualizarLinhaHorario(dia) {
+  const linhaEl = document.querySelector(`.linha-horario[data-dia="${dia}"]`);
+  const fechado = linhaEl.querySelector('.horario-fechado').checked;
+  linhaEl.querySelector('.horario-abre').disabled = fechado;
+  linhaEl.querySelector('.horario-fecha').disabled = fechado;
+}
+
+async function salvarHorarios() {
+  const btn = document.getElementById('btnSalvarHorarios');
+  btn.disabled = true;
+  try {
+    const linhas = Array.from(document.querySelectorAll('.linha-horario')).map(el => ({
+      estabelecimento_id: LOJA.id,
+      dia_semana: Number(el.dataset.dia),
+      fechado: el.querySelector('.horario-fechado').checked,
+      abre_as: el.querySelector('.horario-abre').value || null,
+      fecha_as: el.querySelector('.horario-fecha').value || null
+    }));
+    // Não tem unique constraint em (estabelecimento_id, dia_semana), então
+    // apaga tudo e recria — mesmo padrão já usado pra grupos_ingredientes.
+    await sb.from('horarios_funcionamento').delete().eq('estabelecimento_id', LOJA.id);
+    await sb.from('horarios_funcionamento').insert(linhas);
+    await carregarHorarios();
+    atualizarSwitchLoja();
+    alert('Horários salvos!');
+  } catch (err) {
+    console.error(err);
+    alert('Não foi possível salvar. Tente novamente.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ============================================================
+// CUPONS DE DESCONTO
+// ============================================================
+let CUPONS = [];
+
+async function carregarCupons() {
+  const { data } = await sb.from('cupons').select('*').eq('estabelecimento_id', LOJA.id).eq('ativo', true).order('criado_em');
+  CUPONS = data || [];
+}
+
+function textoValorCupom(c) {
+  return c.tipo === 'percentual' ? `${c.valor}%` : fmt(c.valor);
+}
+
+function renderCupons() {
+  const cont = document.getElementById('listaCupons');
+  if (!cont) return;
+  cont.innerHTML = CUPONS.length ? CUPONS.map(c => `
+    <div class="linha-detalhe">
+      <span>${c.codigo} · ${textoValorCupom(c)} de desconto${c.pedido_minimo ? ' · pedido mín. ' + fmt(c.pedido_minimo) : ''}${c.validade ? ' · até ' + new Date(c.validade + 'T00:00:00').toLocaleDateString('pt-BR') : ''}</span>
+      <button class="link-remover" style="color:var(--danger);background:none;font-size:11px;" onclick="removerCupom('${c.id}')">desativar</button>
+    </div>
+  `).join('') : `<div class="empty-state">Nenhum cupom ativo.</div>`;
+}
+
+function toggleFormCupom() {
+  const form = document.getElementById('formNovoCupom');
+  const aberto = form.classList.toggle('hide') === false;
+  document.getElementById('btnAbrirFormCupom').textContent = aberto ? 'Cancelar' : '+ Adicionar cupom';
+}
+
+async function adicionarCupom() {
+  const codigo = document.getElementById('novoCupomCodigo').value.trim().toUpperCase();
+  const tipo = document.getElementById('novoCupomTipo').value;
+  const valor = Number(document.getElementById('novoCupomValor').value);
+  const pedidoMinimo = document.getElementById('novoCupomPedidoMinimo').value ? Number(document.getElementById('novoCupomPedidoMinimo').value) : null;
+  const validade = document.getElementById('novoCupomValidade').value || null;
+  if (!codigo || !valor) return alert('Preencha o código e o valor do cupom.');
+
+  const { error } = await sb.from('cupons').insert({
+    estabelecimento_id: LOJA.id, codigo, tipo, valor, pedido_minimo: pedidoMinimo, validade
+  });
+  if (error) {
+    console.error(error);
+    alert(error.code === '23505' ? 'Já existe um cupom com esse código.' : 'Não foi possível cadastrar. Tente novamente.');
+    return;
+  }
+
+  document.getElementById('novoCupomCodigo').value = '';
+  document.getElementById('novoCupomValor').value = '';
+  document.getElementById('novoCupomPedidoMinimo').value = '';
+  document.getElementById('novoCupomValidade').value = '';
+  document.getElementById('formNovoCupom').classList.add('hide');
+  document.getElementById('btnAbrirFormCupom').textContent = '+ Adicionar cupom';
+  await carregarCupons();
+  renderCupons();
+}
+
+async function removerCupom(id) {
+  if (!confirm('Desativar este cupom?')) return;
+  await sb.from('cupons').update({ ativo: false }).eq('id', id);
+  await carregarCupons();
+  renderCupons();
 }
 
 // ============================================================
