@@ -23,8 +23,16 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+// Sem isso, o navegador bloqueia a chamada por CORS antes mesmo dela
+// chegar na função (o painel roda num domínio, a function noutro).
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
 function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
 }
 
 async function validarDonoDaLoja(req: Request, estabelecimentoId: string): Promise<boolean> {
@@ -45,6 +53,8 @@ async function validarDonoDaLoja(req: Request, estabelecimentoId: string): Promi
 }
 
 Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });
+
   try {
     const { acao, estabelecimento_id, codigo_autorizacao } = await req.json();
     if (!acao || !estabelecimento_id) return jsonResponse({ erro: 'Parâmetros faltando.' }, 400);
