@@ -66,7 +66,12 @@
   .pedido-entrega-card .acoes button{flex:1;padding:11px;border-radius:11px;font-size:13px;font-weight:700;
     display:inline-flex;align-items:center;justify-content:center;gap:6px;}
   .btn-rota{background:#E4EDFB;color:#1D4ED8;}
+  .btn-retirei{background:#FFF1D9;color:#B4690E;}
   .btn-entregue{background:var(--success);color:#fff;}
+
+  .entregas-hoje{font-size:11.5px;color:#C9D6CC;margin-top:8px;}
+  .link-whatsapp-loja{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:8px;padding:11px;
+    border-radius:12px;background:rgba(255,255,255,0.14);color:#fff;font-size:13px;font-weight:600;text-decoration:none;}
 </style>
 </head>
 <body>
@@ -90,9 +95,11 @@
     <h1 id="nomeEntregador">Olá!</h1>
     <p id="nomeLoja">—</p>
     <div class="status-rastreio"><span class="dot off" id="dotRastreio"></span><span id="textoRastreio">Ativando localização…</span></div>
+    <p class="entregas-hoje" id="textoEntregasHoje">0 entregas hoje</p>
     <button class="btn-disponibilidade" id="btnDisponibilidade" onclick="alternarDisponibilidade()">
       <span class="dot"></span><span id="textoDisponibilidade">Carregando…</span>
     </button>
+    <a href="#" target="_blank" rel="noopener" class="link-whatsapp-loja hide" id="linkWhatsappLoja">💬 Falar com a loja</a>
   </header>
   <main>
     <div id="listaPedidosEntregador"></div>

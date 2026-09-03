@@ -59,6 +59,10 @@ function sair() {
 // APP PRINCIPAL
 // ============================================================
 let LOJA_COORDS = null;
+let LOJA_WHATSAPP = null;
+let ENTREGAS_HOJE = 0;
+// null = ainda não carregou nada (não alerta na primeira carga da lista)
+let IDS_PEDIDOS_CONHECIDOS = null;
 
 // Fórmula de haversine — mesma usada no cardápio do cliente pra calcular
 // a distância entre a loja e o endereço de entrega.
@@ -76,17 +80,24 @@ function entrarNoApp() {
   document.getElementById('nomeEntregador').textContent = `Olá, ${SESSAO.nome}!`;
   document.getElementById('nomeLoja').textContent = SESSAO.estabelecimentoNome;
 
-  sb.from('estabelecimentos').select('latitude, longitude').eq('id', SESSAO.estabelecimentoId).single()
+  sb.from('estabelecimentos').select('latitude, longitude, whatsapp').eq('id', SESSAO.estabelecimentoId).single()
     .then(({ data }) => {
       if (data && data.latitude != null) {
         LOJA_COORDS = { lat: data.latitude, lng: data.longitude };
         renderPedidosEntregador();
+      }
+      if (data && data.whatsapp) {
+        LOJA_WHATSAPP = data.whatsapp;
+        const link = document.getElementById('linkWhatsappLoja');
+        link.href = `https://wa.me/${LOJA_WHATSAPP}`;
+        link.classList.remove('hide');
       }
     });
 
   renderDisponibilidade();
   ativarRastreamento();
   carregarPedidosEntregador();
+  carregarEntregasHoje();
 
   PEDIDOS_CHANNEL = sb.channel('entregador-pedidos-' + SESSAO.entregadorId)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `entregador_id=eq.${SESSAO.entregadorId}` },
@@ -104,7 +115,31 @@ async function carregarPedidosEntregador() {
     .not('status', 'in', '(entregue,cancelado,recusado)')
     .order('criado_em');
   PEDIDOS_ENTREGADOR = data || [];
+
+  const idsAgora = new Set(PEDIDOS_ENTREGADOR.map(p => p.id));
+  if (IDS_PEDIDOS_CONHECIDOS && [...idsAgora].some(id => !IDS_PEDIDOS_CONHECIDOS.has(id))) {
+    alertarPedidoNovo();
+  }
+  IDS_PEDIDOS_CONHECIDOS = idsAgora;
+
   renderPedidosEntregador();
+}
+
+// Bipe curto via Web Audio API (sem depender de nenhum arquivo de áudio)
+// + vibração no Android, pra avisar de um pedido novo mesmo com o
+// celular fora da mão.
+function alertarPedidoNovo() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(); osc.stop(ctx.currentTime + 0.5);
+  } catch (err) { console.error('Não foi possível tocar o alerta sonoro:', err); }
+  navigator.vibrate?.([200, 100, 200]);
 }
 
 function renderPedidosEntregador() {
@@ -139,6 +174,7 @@ function pedidoEntregaCardHTML(p) {
   };
   const statusInfo = STATUS_LABEL[p.status] || { texto: p.status, classe: '' };
   const podeMarcarEntregue = p.status === 'pronto' || p.status === 'saiu_entrega';
+  const podeRetirar = p.status === 'pronto' && p.tipo_entrega === 'entrega';
 
   return `
     <div class="pedido-entrega-card">
@@ -150,6 +186,7 @@ function pedidoEntregaCardHTML(p) {
       <span class="tag-status ${statusInfo.classe}">${statusInfo.texto}</span>
       <div class="acoes">
         ${botaoRota}
+        ${podeRetirar ? `<button class="btn-retirei" onclick="marcarSaiuEntrega('${p.id}')">📦 Retirei o pedido</button>` : ''}
         ${podeMarcarEntregue ? `<button class="btn-entregue" onclick="marcarEntregue('${p.id}')">✓ Entregue</button>` : ''}
       </div>
     </div>`;
@@ -159,13 +196,36 @@ function abrirRota(lat, lng) {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
 }
 
+async function marcarSaiuEntrega(pedidoId) {
+  if (!confirm('Confirmar que você retirou esse pedido na loja e vai sair para entrega?')) return;
+  const { error } = await sb.rpc('entregador_marcar_saiu_entrega', {
+    p_pedido_id: pedidoId, p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin
+  });
+  if (error) { alert('Não foi possível confirmar a retirada. Tente novamente.'); return; }
+  carregarPedidosEntregador();
+}
+
 async function marcarEntregue(pedidoId) {
   if (!confirm('Confirmar que esse pedido foi entregue?')) return;
   const { error } = await sb.rpc('entregador_marcar_entregue', {
     p_pedido_id: pedidoId, p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin
   });
   if (error) { alert('Não foi possível confirmar a entrega. Tente novamente.'); return; }
+  ENTREGAS_HOJE++;
+  document.getElementById('textoEntregasHoje').textContent = `${ENTREGAS_HOJE} entrega${ENTREGAS_HOJE === 1 ? '' : 's'} hoje`;
   carregarPedidosEntregador();
+}
+
+async function carregarEntregasHoje() {
+  const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
+  const { count, error } = await sb.from('pedidos')
+    .select('id', { count: 'exact', head: true })
+    .eq('entregador_id', SESSAO.entregadorId)
+    .eq('status', 'entregue')
+    .gte('atualizado_em', inicio.toISOString());
+  if (error) { console.error('Erro ao carregar entregas de hoje:', error); return; }
+  ENTREGAS_HOJE = count || 0;
+  document.getElementById('textoEntregasHoje').textContent = `${ENTREGAS_HOJE} entrega${ENTREGAS_HOJE === 1 ? '' : 's'} hoje`;
 }
 
 // ============================================================
