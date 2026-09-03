@@ -316,12 +316,28 @@ function abrirRota(lat, lng) {
   window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
 }
 
+// Se o pedido veio do iFood, avisa eles da mudança de status (exigido
+// pela homologação). Se falhar, só avisa — o status já mudou aqui mesmo
+// assim, nosso Kanban é a fonte da verdade.
+async function notificarIfood(pedidoId, acao) {
+  const pedido = PEDIDOS_ENTREGADOR.find(p => p.id === pedidoId);
+  if (!pedido || pedido.origem !== 'ifood') return;
+  const { error } = await sb.functions.invoke('ifood-status', {
+    body: { pedido_id: pedidoId, acao, entregador_id: SESSAO.entregadorId, pin: SESSAO.pin }
+  });
+  if (error) {
+    console.error('Erro ao notificar o iFood:', error);
+    alert('O status mudou aqui, mas não conseguimos avisar o iFood. Tente novamente em instantes.');
+  }
+}
+
 async function marcarSaiuEntrega(pedidoId) {
   if (!confirm('Confirmar que você retirou esse pedido na loja e vai sair para entrega?')) return;
   const { error } = await sb.rpc('entregador_marcar_saiu_entrega', {
     p_pedido_id: pedidoId, p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin
   });
   if (error) { alert('Não foi possível confirmar a retirada. Tente novamente.'); return; }
+  await notificarIfood(pedidoId, 'despachar');
   carregarPedidosEntregador();
 }
 
@@ -331,6 +347,7 @@ async function marcarEntregue(pedidoId) {
     p_pedido_id: pedidoId, p_entregador_id: SESSAO.entregadorId, p_pin: SESSAO.pin
   });
   if (error) { alert('Não foi possível confirmar a entrega. Tente novamente.'); return; }
+  await notificarIfood(pedidoId, 'concluir');
   ENTREGAS_HOJE++;
   document.getElementById('textoEntregasHoje').textContent = `${ENTREGAS_HOJE} entrega${ENTREGAS_HOJE === 1 ? '' : 's'} hoje`;
   carregarPedidosEntregador();

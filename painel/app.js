@@ -531,17 +531,69 @@ function imprimirComanda(id) {
 }
 
 async function atualizarStatus(id, novoStatus) {
+  const pedido = PEDIDOS.find(p => p.id === id);
   await sb.from('pedidos').update({ status: novoStatus, atualizado_em: new Date().toISOString() }).eq('id', id);
+  if (pedido && pedido.origem === 'ifood') await notificarIfood(pedido, novoStatus);
   fecharOverlay('overlayPedido');
   await carregarPedidos();
   renderKanban();
   renderDashboard();
 }
 
+// Reflete no iFood as mudanças de status de um pedido que veio de lá —
+// exigido pela homologação deles (confirmar/despachar/concluir/pronto
+// pra retirada). Se falhar, o status já mudou aqui mesmo assim (nosso
+// Kanban é a fonte da verdade); só avisamos que o iFood não foi notificado.
+async function notificarIfood(pedido, novoStatus, extra = {}) {
+  const ACAO_POR_STATUS = { aceito: 'confirmar', saiu_entrega: 'despachar', entregue: 'concluir' };
+  let acao = ACAO_POR_STATUS[novoStatus];
+  if (novoStatus === 'pronto' && pedido.tipo_entrega === 'retirada') acao = 'pronto_retirada';
+  if (!acao) return;
+  const { error } = await sb.functions.invoke('ifood-status', { body: { pedido_id: pedido.id, acao, ...extra } });
+  if (error) {
+    console.error('Erro ao notificar o iFood:', error);
+    alert('O status mudou aqui, mas não conseguimos avisar o iFood. Tente novamente em instantes.');
+  }
+}
+
 async function recusarPedido(id) {
+  const pedido = PEDIDOS.find(p => p.id === id);
+  if (pedido && pedido.origem === 'ifood') { abrirMotivoCancelamentoIfood(id); return; }
+
   const motivo = prompt('Motivo da recusa (item indisponível, loja fechando, endereço fora da área, outro):');
   if (motivo === null) return;
   await sb.from('pedidos').update({ status: 'recusado', motivo_recusa: motivo }).eq('id', id);
+  fecharOverlay('overlayPedido');
+  await carregarPedidos();
+  renderKanban();
+}
+
+// Pedido do iFood não aceita motivo de texto livre — precisa ser um dos
+// códigos deles, então busca a lista real na hora de cancelar.
+async function abrirMotivoCancelamentoIfood(pedidoId) {
+  const cont = document.getElementById('listaMotivosIfood');
+  cont.innerHTML = `<p class="empty-state">Carregando motivos do iFood…</p>`;
+  abrirOverlay('overlayMotivoCancelamentoIfood');
+
+  const { data, error } = await sb.functions.invoke('ifood-status', { body: { acao: 'listar_motivos_cancelamento', pedido_id: pedidoId } });
+  if (error || !data?.motivos?.length) {
+    console.error('Erro ao buscar motivos de cancelamento do iFood:', error, data);
+    cont.innerHTML = `<p class="empty-state">Não foi possível carregar os motivos do iFood. Tente novamente.</p>`;
+    return;
+  }
+  cont.innerHTML = data.motivos.map(m => {
+    const codigo = m.cancelCodeId || m.code || m.id;
+    const texto = m.description || m.reason || m.text || codigo;
+    return `<button class="motivo-btn" onclick="confirmarCancelamentoIfood('${pedidoId}', '${codigo}')">${texto}</button>`;
+  }).join('');
+}
+
+async function confirmarCancelamentoIfood(pedidoId, cancellationCode) {
+  fecharOverlay('overlayMotivoCancelamentoIfood');
+  const { error } = await sb.functions.invoke('ifood-status', { body: { acao: 'cancelar', pedido_id: pedidoId, cancellation_code: cancellationCode } });
+  if (error) { console.error(error); alert('Não foi possível cancelar no iFood. Tente novamente.'); return; }
+
+  await sb.from('pedidos').update({ status: 'recusado', motivo_recusa: 'Cancelado pela loja (iFood)' }).eq('id', pedidoId);
   fecharOverlay('overlayPedido');
   await carregarPedidos();
   renderKanban();
