@@ -36,8 +36,60 @@ function textoFormaPagamento(p, curto = false) {
   if (p.forma_pagamento === 'pix') return curto ? 'PIX' : 'PIX na entrega';
   if (p.forma_pagamento === 'cartao') return curto ? 'Cartão' : 'Cartão na entrega';
   if (p.forma_pagamento === 'pdv') return curto ? 'No caixa' : 'Pagamento no caixa (retirada)';
-  if (p.forma_pagamento === 'ifood') return 'Pago no iFood';
+  if (p.forma_pagamento === 'ifood') {
+    const info = infoPagamentoIfood(p);
+    return (!curto && info?.metodoTexto) ? info.metodoTexto : 'Pago no iFood';
+  }
   return curto ? 'Dinheiro' : 'Dinheiro' + (p.troco_para ? ` (troco p/ ${fmt(p.troco_para)})` : '');
+}
+
+// Lê o JSON cru do pedido do iFood (já guardado desde a importação) pra
+// extrair informações que a homologação deles pede pra mostrar: bandeira
+// do cartão, troco, quem paga o cupom e CPF/CNPJ. Nomes de campo são a
+// melhor suposição com base em padrões comuns — nunca vimos um payload
+// real do iFood, então tenta variações e não quebra se não achar nada.
+function infoPagamentoIfood(p) {
+  if (p.origem !== 'ifood' || !p.ifood_payload_bruto) return null;
+  const payload = p.ifood_payload_bruto;
+  const resultado = {};
+
+  const pagamento = (payload.payments && payload.payments[0]) || payload.payment || null;
+  if (pagamento) {
+    const metodo = pagamento.method || pagamento.type;
+    const bandeira = pagamento.card?.brand || pagamento.cardBrand;
+    const METODO_LABEL = { CREDIT: 'Cartão de Crédito', DEBIT: 'Cartão de Débito', PIX: 'PIX', CASH: 'Dinheiro', MEAL_VOUCHER: 'Vale-refeição', OTHER: 'Outro' };
+    if (metodo) {
+      resultado.metodoTexto = (METODO_LABEL[metodo] || metodo) + (bandeira ? ` (${bandeira})` : '') + ' — pago no app';
+    }
+    const changeFor = Number(pagamento.changeFor ?? pagamento.cash?.changeFor);
+    if (changeFor > 0) resultado.troco = changeFor - Number(p.total);
+  }
+
+  const beneficios = payload.total?.benefits || payload.benefits;
+  if (Array.isArray(beneficios) && beneficios.length) {
+    const pagoPeloIfood = beneficios.some(b =>
+      (b.sponsorshipValues || []).some(s => (s.name || s.sponsor || '').toUpperCase().includes('IFOOD')) ||
+      (b.target || '').toUpperCase().includes('IFOOD')
+    );
+    resultado.cupomTexto = `Cupom aplicado — pago pel${pagoPeloIfood ? 'o iFood' : 'a loja'}`;
+  }
+
+  const documento = payload.customer?.documentNumber || payload.customer?.taxPayerIdentificationNumber || payload.invoice?.documentNumber;
+  if (documento) resultado.documento = documento;
+
+  return Object.keys(resultado).length ? resultado : null;
+}
+
+// Linhas extras (troco, cupom, documento) só aparecem quando o dado
+// existir de verdade — usado tanto no modal do pedido quanto na comanda.
+function infoPagamentoIfoodHTML(p, classeLinha = 'linha-detalhe') {
+  const info = infoPagamentoIfood(p);
+  if (!info) return '';
+  let html = '';
+  if (info.troco > 0) html += `<div class="${classeLinha}"><span>Troco para</span><span>${fmt(info.troco + Number(p.total))} (troco de ${fmt(info.troco)})</span></div>`;
+  if (info.cupomTexto) html += `<div class="${classeLinha}"><span>Cupom</span><span>${info.cupomTexto}</span></div>`;
+  if (info.documento) html += `<div class="${classeLinha}"><span>CPF/CNPJ</span><span>${info.documento}</span></div>`;
+  return html;
 }
 
 // ============================================================
@@ -460,6 +512,7 @@ function renderPedidoDetalhe(p) {
     <div class="linha-detalhe"><span>Endereço</span><span style="text-align:right;max-width:60%;">${enderecoTxt}
       ${p.tipo_entrega === 'entrega' && p.enderecos ? ` <button class="btn-card-mapa" style="display:inline-flex;width:28px;height:22px;flex:none;padding:0;vertical-align:middle;" onclick="abrirNoMapa('${p.id}')">${icon('mapPin', 14)}</button>` : ''}</span></div>
     <div class="linha-detalhe"><span>Pagamento</span><span>${textoFormaPagamento(p)}</span></div>
+    ${infoPagamentoIfoodHTML(p)}
     <h3 style="font-size:13.5px;margin:14px 0 6px;">Itens</h3>
     ${itensHTML}
     <div class="linha-detalhe" style="margin-top:8px;"><span>Subtotal</span><span>${fmt(p.subtotal)}</span></div>
@@ -519,6 +572,7 @@ function imprimirComanda(id) {
       <div class="ic-total"><span>TOTAL</span><span>${fmt(p.total)}</span></div>
       <hr>
       <div class="ic-linha"><span>Pagamento</span><span>${pagamentoTxt}</span></div>
+      ${infoPagamentoIfoodHTML(p, 'ic-linha')}
       ${p.observacao_geral ? `<div style="font-size:11px;margin-top:8px;">Obs geral: ${p.observacao_geral}</div>` : ''}
     </body></html>`;
 
