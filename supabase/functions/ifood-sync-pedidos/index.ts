@@ -141,6 +141,30 @@ async function importarPedido(cred: any, order: any, produtoPlaceholderId: strin
   }
 }
 
+// Cliente/plataforma pode pedir cancelamento de um pedido já aceito — a
+// política da loja é aceitar automaticamente (recusar geralmente só
+// piora a experiência do cliente). O código de evento e o endpoint de
+// aceite abaixo são uma suposição (não vieram especificados na
+// documentação que temos) — se a chamada falhar, o pedido já é marcado
+// como cancelado aqui mesmo assim, e o erro fica logado pra ajustar o
+// endpoint quando tivermos a resposta real do iFood.
+async function aceitarCancelamentoCliente(cred: any, evento: any) {
+  const orderId = evento.orderId || evento.metadata?.orderId;
+  if (!orderId) return;
+
+  await supabaseAdmin.from('pedidos')
+    .update({ status: 'cancelado', motivo_recusa: 'Cancelado pelo cliente (iFood)', atualizado_em: new Date().toISOString() })
+    .eq('ifood_order_id', orderId);
+
+  const resp = await fetch(`${IFOOD_BASE}/order/v1.0/orders/${orderId}/requestCancellation/accept`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${cred.access_token}` }
+  });
+  if (!resp.ok) throw new Error(`Falha ao aceitar cancelamento do pedido ${orderId}: ${resp.status} ${await resp.text()}`);
+}
+
+const CODIGOS_CANCELAMENTO_CLIENTE = ['CAN', 'CANCELLATION_REQUEST', 'REQUEST_CANCELLATION'];
+
 async function processarLoja(credOriginal: any) {
   const cred = await renovarTokenSeNecessario(credOriginal);
   if (!cred) return;
@@ -163,7 +187,19 @@ async function processarLoja(credOriginal: any) {
 
   for (const evento of eventos) {
     try {
-      if (evento.code !== 'PLC') { eventosConfirmados.push({ id: evento.id }); continue; }
+      if (CODIGOS_CANCELAMENTO_CLIENTE.includes(evento.code)) {
+        await aceitarCancelamentoCliente(cred, evento);
+        eventosConfirmados.push({ id: evento.id });
+        continue;
+      }
+
+      if (evento.code !== 'PLC') {
+        // Loga em vez de ignorar silenciosamente — ajuda a descobrir
+        // códigos de evento que ainda não tratamos.
+        console.log(`Evento não tratado (código ${evento.code}) da loja ${cred.estabelecimento_id}:`, JSON.stringify(evento));
+        eventosConfirmados.push({ id: evento.id });
+        continue;
+      }
 
       const orderId = evento.orderId || evento.metadata?.orderId;
       const { data: jaExiste } = await supabaseAdmin.from('pedidos').select('id').eq('ifood_order_id', orderId).maybeSingle();
