@@ -155,6 +155,7 @@
   .pedido-card .linha1{display:flex;justify-content:space-between;font-size:13.5px;font-weight:700;}
   .pedido-card .linha2{font-size:12px;color:var(--muted);margin-top:3px;}
   .pedido-card .linha3{font-size:12.5px;margin-top:6px;}
+  .pedido-card .linha-itens{font-size:11.5px;color:var(--ink-soft);margin-top:4px;line-height:1.4;}
   .pedido-card .valor{font-weight:700;color:var(--ink);margin-top:6px;font-size:13.5px;}
   .pedido-card .linha-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
   .tag-cliente{font-size:10px;font-weight:700;background:#EFEDFB;color:#5B4FCF;padding:3px 7px;border-radius:6px;}
@@ -317,6 +318,10 @@
       </div>
       <label class="campo-checkbox">
         <input type="checkbox" id="cfgAceitaCartao"> Aceitar cartão na entrega (o entregador leva a maquininha)
+      </label>
+      <label class="campo-checkbox">
+        <input type="checkbox" id="cfgImpressaoAutomatica" onchange="alternarImpressaoAutomatica(this.checked)">
+        Imprimir a comanda automaticamente quando chegar um pedido novo (só neste computador)
       </label>
       <div class="campo">
         <label>Cor de destaque do cardápio</label>

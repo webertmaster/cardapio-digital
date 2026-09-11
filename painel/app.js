@@ -189,6 +189,13 @@ function base64ParaUint8Array(base64) {
   return Uint8Array.from([...bruto].map((c) => c.charCodeAt(0)));
 }
 
+// Impressão automática é uma preferência do computador, não da loja — só
+// a máquina ligada na impressora da cozinha deve imprimir sozinha, então
+// fica salva no navegador (localStorage), não no banco.
+const LS_IMPRESSAO_AUTOMATICA = 'impressao_automatica_pedidos';
+function impressaoAutomaticaAtiva() { return localStorage.getItem(LS_IMPRESSAO_AUTOMATICA) === '1'; }
+function alternarImpressaoAutomatica(checked) { localStorage.setItem(LS_IMPRESSAO_AUTOMATICA, checked ? '1' : '0'); }
+
 async function ativarPushDaLoja() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
   try {
@@ -251,10 +258,14 @@ async function iniciarPainel() {
   PEDIDOS_CHANNEL_ATIVO = sb.channel('painel-pedidos-' + LOJA.id)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos', filter: `estabelecimento_id=eq.${LOJA.id}` },
       (payload) => {
-        if (payload.eventType === 'INSERT') alertarPedidoNovoPainel();
+        const idPedidoNovo = payload.eventType === 'INSERT' ? payload.new.id : null;
+        if (idPedidoNovo) alertarPedidoNovoPainel();
         carregarPedidos()
           .then(() => Promise.all([carregarContagemClientes(), carregarHistoricoVendas()]))
-          .then(() => { renderKanban(); renderDashboard(); });
+          .then(() => {
+            renderKanban(); renderDashboard();
+            if (idPedidoNovo && impressaoAutomaticaAtiva()) imprimirComanda(idPedidoNovo);
+          });
       })
     .subscribe();
 
@@ -412,11 +423,14 @@ function pedidoCardHTML(p, corClasse) {
   const linkMapa = p.tipo_entrega === 'entrega' && p.enderecos
     ? `<button class="btn-card-mapa" title="Ver no mapa" onclick="event.stopPropagation(); abrirNoMapa('${p.id}')">${icon('mapPin', 15)}</button>` : '';
 
+  const itensTxt = (p.itens_pedido || []).map(i => `${i.quantidade}x ${i.nome_produto}`).join(', ');
+
   return `
     <div class="pedido-card cor-${corClasse}" onclick="abrirPedido('${p.id}')">
       <div class="linha1"><span>#${p.numero}</span><span>${fmt(p.total)}</span></div>
       <div class="linha2">${hora} • ${p.clientes?.nome || 'Cliente'} • ${p.tipo_entrega === 'entrega' ? 'Entrega' : 'Retirada'}</div>
       <div class="linha3">${pagamentoTxt} · ${p.itens_pedido?.length || 0} ${p.itens_pedido?.length === 1 ? 'item' : 'itens'}</div>
+      ${itensTxt ? `<div class="linha-itens">${itensTxt}</div>` : ''}
       <div class="linha-tags">${tagIfood}${tagCliente}${tagCobrar}</div>
       ${acoesHTML}
       <div class="pedido-card-acoes">${linkMapa}${botaoImprimir}</div>
@@ -1312,6 +1326,7 @@ function renderDadosLoja() {
   document.getElementById('cfgTempoMin').value = LOJA.tempo_entrega_min;
   document.getElementById('cfgTempoMax').value = LOJA.tempo_entrega_max;
   document.getElementById('cfgAceitaCartao').checked = !!LOJA.aceita_cartao;
+  document.getElementById('cfgImpressaoAutomatica').checked = impressaoAutomaticaAtiva();
   renderSeletorCores();
   document.getElementById('previewLogoLoja').innerHTML = LOJA.logo_url
     ? `<img src="${LOJA.logo_url}" style="width:100%;height:100%;object-fit:cover;">` : 'Sem foto';
