@@ -331,6 +331,16 @@ async function notificarIfood(pedidoId, acao) {
   }
 }
 
+// Avisa o cliente por WhatsApp (via Evolution API) — só pra pedidos do
+// cardápio próprio, não do iFood (esses já notificam pelo app deles).
+// Falha aqui nunca bloqueia nem alerta ninguém, é só uma cortesia.
+function notificarWhatsapp(pedidoId, status) {
+  const pedido = PEDIDOS_ENTREGADOR.find(p => p.id === pedidoId);
+  if (!pedido || pedido.origem === 'ifood') return;
+  sb.functions.invoke('whatsapp-status', { body: { acao: 'enviar', pedido_id: pedidoId, status } })
+    .then(({ error }) => { if (error) console.error('Erro ao notificar WhatsApp:', error); });
+}
+
 async function marcarSaiuEntrega(pedidoId) {
   if (!confirm('Confirmar que você retirou esse pedido na loja e vai sair para entrega?')) return;
   const { error } = await sb.rpc('entregador_marcar_saiu_entrega', {
@@ -338,6 +348,7 @@ async function marcarSaiuEntrega(pedidoId) {
   });
   if (error) { alert('Não foi possível confirmar a retirada. Tente novamente.'); return; }
   await notificarIfood(pedidoId, 'despachar');
+  notificarWhatsapp(pedidoId, 'saiu_entrega');
   carregarPedidosEntregador();
 }
 
@@ -348,6 +359,7 @@ async function marcarEntregue(pedidoId) {
   });
   if (error) { alert('Não foi possível confirmar a entrega. Tente novamente.'); return; }
   await notificarIfood(pedidoId, 'concluir');
+  notificarWhatsapp(pedidoId, 'entregue');
   ENTREGAS_HOJE++;
   document.getElementById('textoEntregasHoje').textContent = `${ENTREGAS_HOJE} entrega${ENTREGAS_HOJE === 1 ? '' : 's'} hoje`;
   carregarPedidosEntregador();

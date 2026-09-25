@@ -100,6 +100,7 @@ function icon(nome, tamanho = 16) {
     printer: '<rect x="5" y="8" width="14" height="8" rx="1"/><path d="M7.5 8V4h9v4"/><rect x="7.5" y="13.5" width="9" height="6"/>',
     mapPin: '<path d="M12 21s7-6.8 7-11.5A7 7 0 0 0 5 9.5C5 14.2 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.4"/>',
     utensils: '<path d="M6.5 2v7"/><path d="M4.5 2v3.5a2 2 0 0 0 4 0V2"/><path d="M6.5 9v13"/><path d="M17.5 2c-1.8 0-2.8 2.2-2.8 5s1 4 2.8 4v11"/>',
+    chat: '<path d="M4 20l1.3-3.9A8 8 0 1 1 8.9 19Z"/>',
   }[nome] || '';
   return `<svg width="${tamanho}" height="${tamanho}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block">${paths}</svg>`;
 }
@@ -239,6 +240,7 @@ async function iniciarPainel() {
   await carregarRaiosEntrega();
   await carregarEntregadores();
   await carregarCredenciaisIfood();
+  await carregarWhatsappConfig();
   await carregarHorarios();
   await carregarCupons();
   await carregarPedidos();
@@ -250,6 +252,7 @@ async function iniciarPainel() {
   renderRaiosEntrega();
   renderDadosLoja();
   renderCredenciaisIfood();
+  renderWhatsapp();
   renderHorariosForm();
   renderCupons();
 
@@ -318,6 +321,7 @@ function mudarView(id) {
   if (id === 'viewEntregas') ativarViewEntregas();
   if (id === 'viewEntregadores') ativarViewEntregadores();
   if (id === 'viewFinanceiro') ativarViewFinanceiro();
+  if (id === 'viewWhatsapp') renderWhatsapp();
 }
 
 function abrirOverlay(id) { document.getElementById(id).classList.remove('hide'); }
@@ -534,8 +538,50 @@ function renderPedidoDetalhe(p) {
     <div class="linha-detalhe" style="font-weight:700;"><span>Total</span><span>${fmt(p.total)}</span></div>
     ${seletorEntregadorHTML}
     ${acoesHTML}
+    ${botaoAvisarWhatsappHTML(p)}
     <button class="btn-secundario" onclick="imprimirComanda('${p.id}')">${icon('printer', 16)} Imprimir comanda</button>
   `;
+}
+
+// "Avisar cliente no WhatsApp": abre o WhatsApp da própria loja com a
+// mensagem do status atual já escrita — sem API, sem custo, usando o
+// número que o lojista já usa pra atender.
+function mensagemWhatsappParaStatus(p) {
+  const n = p.numero;
+  switch (p.status) {
+    case 'recebido': return `Olá! Recebemos o seu pedido #${n} 🎉`;
+    case 'aceito':
+    case 'preparando': return `Olá! Seu pedido #${n} foi confirmado e já está sendo preparado.`;
+    case 'pronto': return p.tipo_entrega === 'retirada'
+      ? `Olá! Seu pedido #${n} está pronto para retirada!`
+      : `Olá! Seu pedido #${n} está pronto e logo sai para entrega.`;
+    case 'saiu_entrega': return `Olá! Seu pedido #${n} saiu para entrega! 🛵`;
+    case 'entregue': return `Seu pedido #${n} foi entregue. Bom apetite! 😋`;
+    case 'recusado': return `Olá! Infelizmente não conseguimos atender o pedido #${n}${p.motivo_recusa ? ': ' + p.motivo_recusa : ''}.`;
+    default: return null;
+  }
+}
+
+function numeroParaWhatsapp(telefone) {
+  const digitos = (telefone || '').replace(/\D/g, '');
+  if (digitos.length < 10) return null;
+  return digitos.length <= 11 ? `55${digitos}` : digitos;
+}
+
+function botaoAvisarWhatsappHTML(p) {
+  // Pedido do iFood traz um número-proxy, não o WhatsApp real do cliente
+  if (p.origem === 'ifood') return '';
+  if (!numeroParaWhatsapp(p.clientes?.whatsapp) || !mensagemWhatsappParaStatus(p)) return '';
+  return `<button class="btn-secundario" onclick="avisarClienteWhatsapp('${p.id}')">${icon('chat', 16)} Avisar cliente no WhatsApp</button>`;
+}
+
+function avisarClienteWhatsapp(id) {
+  const p = PEDIDOS.find(x => x.id === id);
+  if (!p) return;
+  const numero = numeroParaWhatsapp(p.clientes?.whatsapp);
+  const texto = mensagemWhatsappParaStatus(p);
+  if (!numero || !texto) return;
+  window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
 }
 
 // ============================================================
@@ -602,6 +648,10 @@ async function atualizarStatus(id, novoStatus) {
   const pedido = PEDIDOS.find(p => p.id === id);
   await sb.from('pedidos').update({ status: novoStatus, atualizado_em: new Date().toISOString() }).eq('id', id);
   if (pedido && pedido.origem === 'ifood') await notificarIfood(pedido, novoStatus);
+  // Pedido do iFood já notifica o cliente pelo próprio app deles, e o
+  // telefone guardado costuma ser um número-proxy — WhatsApp é só pros
+  // pedidos feitos direto no nosso cardápio.
+  if (pedido && pedido.origem !== 'ifood') notificarWhatsapp(pedido, novoStatus);
   fecharOverlay('overlayPedido');
   await carregarPedidos();
   renderKanban();
@@ -624,6 +674,14 @@ async function notificarIfood(pedido, novoStatus, extra = {}) {
   }
 }
 
+// Avisa o cliente por WhatsApp (via Evolution API) sobre a mudança de
+// status — pra qualquer pedido, não só os do iFood. Falha aqui nunca
+// bloqueia nem alerta ninguém: é uma cortesia, não uma etapa obrigatória.
+function notificarWhatsapp(pedido, novoStatus) {
+  sb.functions.invoke('whatsapp-status', { body: { acao: 'enviar', pedido_id: pedido.id, status: novoStatus } })
+    .then(({ error }) => { if (error) console.error('Erro ao notificar WhatsApp:', error); });
+}
+
 async function recusarPedido(id) {
   const pedido = PEDIDOS.find(p => p.id === id);
   if (pedido && pedido.origem === 'ifood') { abrirMotivoCancelamentoIfood(id); return; }
@@ -631,6 +689,7 @@ async function recusarPedido(id) {
   const motivo = prompt('Motivo da recusa (item indisponível, loja fechando, endereço fora da área, outro):');
   if (motivo === null) return;
   await sb.from('pedidos').update({ status: 'recusado', motivo_recusa: motivo }).eq('id', id);
+  if (pedido) notificarWhatsapp({ ...pedido, motivo_recusa: motivo }, 'recusado');
   fecharOverlay('overlayPedido');
   await carregarPedidos();
   renderKanban();
@@ -1543,6 +1602,77 @@ async function salvarCredenciaisIfood() {
     btn.disabled = false;
     btn.textContent = textoOriginal;
   }
+}
+
+// ============================================================
+// WHATSAPP — API oficial do WhatsApp (Meta Cloud API): credenciais por
+// loja e notificações automáticas de status de pedido pro cliente.
+// ============================================================
+let WHATSAPP_CONFIG = null;
+
+async function carregarWhatsappConfig() {
+  const { data, error } = await sb.from('whatsapp_config').select('*').eq('estabelecimento_id', LOJA.id).maybeSingle();
+  if (error) { console.error('Erro ao carregar configuração do WhatsApp:', error); return; }
+  WHATSAPP_CONFIG = data;
+}
+
+function renderWhatsapp() {
+  const statusEl = document.getElementById('whatsappStatusTexto');
+  if (!statusEl) return;
+
+  document.getElementById('whatsappPhoneId').value = WHATSAPP_CONFIG?.phone_number_id || '';
+  document.getElementById('whatsappTemplate').value = WHATSAPP_CONFIG?.template_name || 'status_pedido';
+
+  if (WHATSAPP_CONFIG?.phone_number_id && WHATSAPP_CONFIG?.access_token) {
+    statusEl.textContent = 'Credenciais salvas — clique em "Testar conexão" pra confirmar.';
+    statusEl.style.color = 'var(--success)';
+    document.getElementById('whatsappConectado').classList.remove('hide');
+    document.getElementById('cbNotificacoesWhatsapp').checked = WHATSAPP_CONFIG.notificacoes_ativas !== false;
+  } else {
+    statusEl.textContent = 'Ainda não configurado.';
+    statusEl.style.color = 'var(--muted)';
+    document.getElementById('whatsappConectado').classList.add('hide');
+  }
+}
+
+async function salvarCredenciaisWhatsapp() {
+  const phoneId = document.getElementById('whatsappPhoneId').value.trim();
+  const token = document.getElementById('whatsappToken').value.trim();
+  const template = document.getElementById('whatsappTemplate').value.trim() || 'status_pedido';
+  if (!phoneId) return alert('Preencha o Phone Number ID.');
+  if (!token && !WHATSAPP_CONFIG?.access_token) return alert('Preencha o Token de acesso.');
+
+  const btn = document.getElementById('btnSalvarWhatsapp');
+  const textoOriginal = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  try {
+    const { data, error } = await sb.functions.invoke('whatsapp-status', {
+      body: { acao: 'salvar_credenciais', estabelecimento_id: LOJA.id, phone_number_id: phoneId, access_token: token || undefined, template_name: template }
+    });
+    if (error || data?.erro) throw new Error(data?.erro || error.message);
+    await carregarWhatsappConfig();
+    document.getElementById('whatsappToken').value = '';
+    renderWhatsapp();
+    alert('Credenciais do WhatsApp salvas!');
+  } catch (err) {
+    console.error(err);
+    alert('Não foi possível salvar: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+}
+
+async function testarConexaoWhatsapp() {
+  const { data, error } = await sb.functions.invoke('whatsapp-status', { body: { acao: 'testar_conexao', estabelecimento_id: LOJA.id } });
+  if (error || data?.erro) { alert('Falha na conexão: ' + (data?.erro || error.message)); return; }
+  alert(`Conectado! Número: ${data.numero} (${data.nome || 'sem nome verificado'})`);
+}
+
+async function alternarNotificacoesWhatsapp(checked) {
+  await sb.from('whatsapp_config').update({ notificacoes_ativas: checked }).eq('estabelecimento_id', LOJA.id);
+  if (WHATSAPP_CONFIG) WHATSAPP_CONFIG.notificacoes_ativas = checked;
 }
 
 // ============================================================

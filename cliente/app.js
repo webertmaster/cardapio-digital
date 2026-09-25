@@ -797,6 +797,12 @@ async function enviarPedido() {
     }).select().single();
     if (erroPedido) throw erroPedido;
 
+    // Avisa por WhatsApp (via Evolution API) que o pedido foi recebido —
+    // não bloqueia nem trava o fluxo se a loja ainda não conectou o
+    // WhatsApp ou se o envio falhar.
+    sb.functions.invoke('whatsapp-status', { body: { acao: 'enviar', pedido_id: pedido.id, status: 'recebido' } })
+      .then(({ error }) => { if (error) console.error('Erro ao notificar WhatsApp:', error); });
+
     // 4. itens + adicionais
     for (const item of CARRINHO) {
       const { data: itemPedido, error: erroItem } = await sb.from('itens_pedido').insert({

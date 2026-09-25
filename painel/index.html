@@ -241,6 +241,7 @@
       <button class="sidebar-item" data-view="viewCupons" onclick="mudarView('viewCupons')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a2 2 0 0 1 0-4h16a2 2 0 0 1 0 4v6a2 2 0 0 1 0 4H4a2 2 0 0 1 0-4Z"/><line x1="12" y1="6" x2="12" y2="18" stroke-dasharray="2 2.4"/></svg>Cupons</button>
       <button class="sidebar-item" data-view="viewConfig" onclick="mudarView('viewConfig')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/></svg>Config</button>
       <button class="sidebar-item" data-view="viewIfood" onclick="mudarView('viewIfood')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 8h11l-1 12h-9Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>iFood</button>
+      <button class="sidebar-item" data-view="viewWhatsapp" onclick="mudarView('viewWhatsapp')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l1.3-3.9A8 8 0 1 1 8.9 19Z"/></svg>WhatsApp</button>
       <button class="sidebar-item" data-view="viewFinanceiro" onclick="mudarView('viewFinanceiro')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v9"/><path d="M15 9.8c0-1.3-1.4-1.8-3-1.8s-3 .6-3 1.8c0 2.6 6 1.2 6 3.9 0 1.3-1.4 1.8-3 1.8s-3-.5-3-1.8"/></svg>Financeiro</button>
     </nav>
   </aside>
@@ -356,6 +357,31 @@
         <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">2. Depois de autorizar lá, volte aqui e confirme:</p>
         <div class="campo"><label>Código de autorização (só se o iFood pedir um diferente do de cima)</label><input id="ifoodCodigoAutorizacao"></div>
         <button class="btn-secundario" id="btnConfirmarAutorizacaoIfood" onclick="confirmarAutorizacaoIfood()">Já autorizei, confirmar</button>
+      </div>
+    </section>
+
+    <!-- WHATSAPP -->
+    <section class="view" id="viewWhatsapp">
+      <h3 style="font-size:14px;margin-bottom:4px;">WhatsApp automático</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">
+        Conecte a API oficial do WhatsApp da loja pra o cliente receber mensagens automáticas conforme o pedido avança
+        (recebido, aceito, pronto, saiu pra entrega, entregue).
+      </p>
+      <p id="whatsappStatusTexto" style="font-size:13px;font-weight:600;margin-bottom:14px;">Carregando…</p>
+
+      <div class="campo"><label>Phone Number ID</label><input id="whatsappPhoneId" autocomplete="off"></div>
+      <div class="campo"><label>Token de acesso</label><input id="whatsappToken" type="password" autocomplete="new-password" placeholder="Deixe em branco pra manter o atual"></div>
+      <div class="campo"><label>Nome do modelo aprovado</label><input id="whatsappTemplate" value="status_pedido"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="btn-secundario" id="btnSalvarWhatsapp" onclick="salvarCredenciaisWhatsapp()">Salvar credenciais</button>
+        <button class="btn-secundario" onclick="testarConexaoWhatsapp()">Testar conexão</button>
+      </div>
+
+      <div id="whatsappConectado" class="hide">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:14px 0;">
+          <input type="checkbox" id="cbNotificacoesWhatsapp" onchange="alternarNotificacoesWhatsapp(this.checked)">
+          Enviar notificações automáticas por WhatsApp
+        </label>
       </div>
     </section>
 
